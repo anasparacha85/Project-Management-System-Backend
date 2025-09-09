@@ -1,0 +1,10 @@
+const express=require('express')
+const ProjectRouter=express.Router()
+const ProjectController=require('../Controller/ProjController')
+const requireAuth = require('../Middleware/requireAuth')
+ProjectRouter.route('/fetchProject/:id').get(requireAuth,ProjectController.fetchProjectReportById)
+ProjectRouter.route('/fetchProjectFiles/:id').get(requireAuth,ProjectController.fetchFilesByProjectId)
+ProjectRouter.route('/fetchMilestone/:id').get(requireAuth,ProjectController.fetchMilestonesByProjectId)
+ProjectRouter.route('/fetchProjectDetailsById/:id').get(requireAuth,ProjectController.fetchProjectDetailsById)
+ProjectRouter.route('/updateProject').put(requireAuth,ProjectController.updateProjectDetailsById)
+module.exports=ProjectRouter
