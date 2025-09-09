@@ -49,7 +49,7 @@ const taskSchema = new mongoose.Schema({
 
   dependencies: [{ type: mongoose.Schema.Types.ObjectId, ref: "Task" }],
 
-  subTasks: [{type:mongoose.Schema.Types.ObjectId,ref:"Task"}],
+  subTasks: [{type:mongoose.Schema.Types.ObjectId,ref:"SubTask"}],
 
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

@@ -286,6 +286,26 @@ const deleteSubTaskById=async(req,res)=>{
     
   }
 }
+const updateSubTaskStatusById=async(req,res)=>{
+  try {
+    const {Id,status}=req.body;
+    if(!mongoose.Types.ObjectId.isValid(Id)){
+      return res.status(400).json({FailureMessage:"Not a valid id"})
+    }
+  const subtask=await SubTask.findOne({_id:Id})
+  if(!subtask){
+    return res.status(404).json({FailureMessage:"No task found"})
+  }
+  const updatedSUbTask=await SubTask.updateOne({_id:Id},{$set:{status:status}})
+  console.log(updatedSUbTask);
+await updateSubtaskProgress(subtask._id)
+await updateTaskProgress(subtask.task)
+  return res.status(200).json({SuccessMessage:"status updated successfully"})
+  } catch (error) {
+    return res.status(500).json({SuccessMessage:"Internal server error"})
+    
+  }
+  
+}
 
-
-module.exports = { CreateSubTask ,getSubTasksByTaskId,getSubTaskBySubId,fetchTeamByTaskId,updateSubTaskByID,deleteSubTaskById};
+module.exports = { CreateSubTask ,getSubTasksByTaskId,getSubTaskBySubId,fetchTeamByTaskId,updateSubTaskByID,deleteSubTaskById,updateSubTaskStatusById};

@@ -9,6 +9,7 @@ SubTaskRouter.route('/getSubTaskById/:id').get(requireAuth,SubTaskController.get
 SubTaskRouter.route('/getTeamByTaskId/:id').get(requireAuth,SubTaskController.fetchTeamByTaskId)
 SubTaskRouter.route('/updateSubTaskById/:id').put(requireAuth,SubTaskController.updateSubTaskByID)
 SubTaskRouter.route('/deleteSubTaskById/:id').delete(requireAuth,SubTaskController.deleteSubTaskById)
+SubTaskRouter.route('/updateSubTaskStatus').patch(requireAuth,SubTaskController.updateSubTaskStatusById)
 module.exports=SubTaskRouter
 
 
