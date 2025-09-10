@@ -99,7 +99,7 @@ const attachments = (req.files || []).map(file => ({
    await  project.save()
 
     await updateTaskProgress(task._id);
-    await updateProjectProgress(project._id);
+    // await updateProjectProgress(project._id);
 
     return res.status(201).json({
       SuccessMessage: "Task created successfully",
@@ -176,7 +176,13 @@ const fetchTaskByID=async(req,res)=>{
   try {
    try {
         const taskId=req.params.id;
-        const milestone=await Task.findOne({_id:taskId}).populate({path:'attachments.uploadedBy assignees.user dependencies  createdBy'})
+        const milestone=await Task.findOne({_id:taskId}).populate([
+    { path: "attachments.uploadedBy" },
+    { path: "assignees.user" },
+    { path: "dependencies" },
+    { path: "createdBy" },
+    { path: "subTasks" }
+  ]);
         if(!milestone){
             return res.status(400).json({FailureMessage:'no milestone found'})
         }
@@ -283,8 +289,8 @@ const updateTaskByID = async (req, res) => {
       .populate("assignees.user", "name email")
       .populate("createdBy", "name email");
 
-    updateTaskProgress(task._id);
-    await updateProjectProgress(task.project);
+   await  updateTaskProgress(task._id);
+    // await updateProjectProgress(task.project);
 
 
     res.status(200).json({

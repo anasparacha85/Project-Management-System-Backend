@@ -1,5 +1,5 @@
-const Task=require('../Modal/TaskModal')
-const SubTask=require('../Modal/SubTaskModal.js');
+const Task = require('../Modal/TaskModal')
+const SubTask = require('../Modal/SubTaskModal.js');
 const { default: mongoose } = require('mongoose');
 const updateTaskProgress = require('../helper/taskprogresshelper.js');
 const updateSubtaskStatus = require('../helper/subtaskprogresshelper.js');
@@ -28,24 +28,24 @@ const CreateSubTask = async (req, res) => {
       dueDate,
       assignees,
     } = req.body;
-  
+
 
 
     if (!title) {
       return res.status(400).json({ FailureMessage: "Subtask title required" });
     }
-      const TaskStartDate=new Date(task.startDate)
-    const TaskEndDate=new Date(task.dueDate)
-      const SubTaskStartDate=new Date(startDate)
-    const SubTaskEndDate=new Date(dueDate)
-    if(SubTaskStartDate<TaskStartDate ){
-        return res.status(400).json({FailureMessage:"start date can not be before the milestone start date"})
+    const TaskStartDate = new Date(task.startDate)
+    const TaskEndDate = new Date(task.dueDate)
+    const SubTaskStartDate = new Date(startDate)
+    const SubTaskEndDate = new Date(dueDate)
+    if (SubTaskStartDate < TaskStartDate) {
+      return res.status(400).json({ FailureMessage: "start date can not be before the milestone start date" })
     }
-        if(SubTaskEndDate<TaskStartDate ){
-        return res.status(400).json({FailureMessage:"end date can not be before the milestone start date"})
+    if (SubTaskEndDate < TaskStartDate) {
+      return res.status(400).json({ FailureMessage: "end date can not be before the milestone start date" })
     }
-     if(SubTaskEndDate>TaskEndDate ){
-        return res.status(400).json({FailureMessage:"end date can not be after the milestone end date"})
+    if (SubTaskEndDate > TaskEndDate) {
+      return res.status(400).json({ FailureMessage: "end date can not be after the milestone end date" })
     }
 
     // Parse assignees (array of { user, status })
@@ -57,16 +57,16 @@ const CreateSubTask = async (req, res) => {
         return res.status(400).json({ FailureMessage: "Invalid assignees format" });
       }
     }
-console.log(req.files);
+    console.log(req.files);
 
     // Handle Cloudinary uploads
     const files = req.files
       ? req.files.map((file) => ({
-          filename: file.originalname || file.filename,
-          url: file.path, // 👈 Cloudinary ne jo hosted URL diya
-          uploadedBy: req.user._id, // assuming auth middleware
-          uploadedAt: new Date(),
-        }))
+        filename: file.originalname || file.filename,
+        url: file.path, // 👈 Cloudinary ne jo hosted URL diya
+        uploadedBy: req.user._id, // assuming auth middleware
+        uploadedAt: new Date(),
+      }))
       : [];
 
     // Create subtask
@@ -88,7 +88,7 @@ console.log(req.files);
     task.subTasks.push(newSubTask._id);
     await task.save();
     await updateSubtaskProgress(newSubTask._id)
-    await updateTaskProgress(task._id)
+    // await updateTaskProgress(task._id)
 
     return res.status(201).json({
       SuccessMessage: "Subtask created successfully",
@@ -102,8 +102,8 @@ console.log(req.files);
 const getSubTasksByTaskId = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("task id",id);
-    
+    console.log("task id", id);
+
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ FailureMessage: "Not a valid Task ID" });
@@ -115,9 +115,9 @@ const getSubTasksByTaskId = async (req, res) => {
         path: "attachments.uploadedBy",
         select: "name email", // ✅ only return these fields
       })
-      .populate({path:'assignees.user'})
+      .populate({ path: 'assignees.user' })
 
-    if (!subTasks || subTasks.length === 0) {
+    if (!subTasks) {
       return res.status(404).json({ FailureMessage: "No subtasks found for this task" });
     }
 
@@ -131,42 +131,42 @@ const getSubTasksByTaskId = async (req, res) => {
   }
 };
 
-const getSubTaskBySubId=async(req,res)=>{
+const getSubTaskBySubId = async (req, res) => {
   try {
-    const id=req.params.id;
-    console.log("subtaskid",id);
-    
-    if(!mongoose.Types.ObjectId.isValid(id)){
-      return res.status(400).json({FailureMessage:"not a valid id"})
+    const id = req.params.id;
+    console.log("subtaskid", id);
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ FailureMessage: "not a valid id" })
     }
-    const subtask=await SubTask.findById(id).populate({path:'task'}).populate({path:'assignees.user'}).populate({path:'attachments.uploadedBy'}).populate({path:'createdBy'})
-    if(!subtask){
-      return res.status(404).json({FailureMessage:"No SubTask Found"})
+    const subtask = await SubTask.findById(id).populate({ path: 'task' }).populate({ path: 'assignees.user' }).populate({ path: 'attachments.uploadedBy' }).populate({ path: 'createdBy' })
+    if (!subtask) {
+      return res.status(404).json({ FailureMessage: "No SubTask Found" })
     }
     res.status(200).json(subtask)
   } catch (error) {
-    console.log("getSubTaskBySub error",error);
-    
+    console.log("getSubTaskBySub error", error);
+
     return res.status(500).json({ FailureMessage: "Server Error" });
-    
+
   }
 }
-const fetchTeamByTaskId=async(req,res)=>{
+const fetchTeamByTaskId = async (req, res) => {
   try {
-    const TaskId=req.params.id;
-    if(!mongoose.Types.ObjectId.isValid(TaskId)){
-      return res.status(400).json({FailureMessage:"not a valid id"})
+    const TaskId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(TaskId)) {
+      return res.status(400).json({ FailureMessage: "not a valid id" })
     }
-    const task=await Task.findById(TaskId).populate({path:'assignees.user'})
-    if(!task){
-      return res.status(404).json({FailureMessage:"Task not found"})
+    const task = await Task.findById(TaskId).populate({ path: 'assignees.user' })
+    if (!task) {
+      return res.status(404).json({ FailureMessage: "Task not found" })
     }
     return res.status(200).json(task)
   } catch (error) {
     console.log(error);
-    
-    return res.status(500).json({FailureMessage:"Internal Server error"})
-    
+
+    return res.status(500).json({ FailureMessage: "Internal Server error" })
+
   }
 }
 const updateSubTaskByID = async (req, res) => {
@@ -257,8 +257,8 @@ const updateSubTaskByID = async (req, res) => {
     })
       .populate("assignees.user", "name email")
       .populate("createdBy", "name email");
-    updateSubtaskProgress(subtask._id)
-    updateTaskProgress(subtask.task);
+    await updateSubtaskProgress(subtask._id)
+    // updateTaskProgress(subtask.task);
 
     res.status(200).json({
       SuccessMessage: "SubTask updated successfully",
@@ -269,43 +269,43 @@ const updateSubTaskByID = async (req, res) => {
     res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
-const deleteSubTaskById=async(req,res)=>{
+const deleteSubTaskById = async (req, res) => {
   try {
-    const id=req.params.id;
-    if(!mongoose.Types.ObjectId.isValid(id)){
-      return res.status(400).json({FailureMessage:"not a valid id"})
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ FailureMessage: "not a valid id" })
     }
-    const subtask=await SubTask.findById(id);
-    if(!subtask){
-      return res.status(404).json({FailureMessage:"No Task Found"})
+    const subtask = await SubTask.findById(id);
+    if (!subtask) {
+      return res.status(404).json({ FailureMessage: "No Task Found" })
     }
-    await SubTask.deleteOne({_id:subtask._id})
-    res.status(200).json({SuccessMessage:"task deleted successfully"})
+    await SubTask.deleteOne({ _id: subtask._id })
+    res.status(200).json({ SuccessMessage: "task deleted successfully" })
   } catch (error) {
-    res.status(500).json({FailureMessage:"Internal server error"})
-    
+    res.status(500).json({ FailureMessage: "Internal server error" })
+
   }
 }
-const updateSubTaskStatusById=async(req,res)=>{
+const updateSubTaskStatusById = async (req, res) => {
   try {
-    const {Id,status}=req.body;
-    if(!mongoose.Types.ObjectId.isValid(Id)){
-      return res.status(400).json({FailureMessage:"Not a valid id"})
+    const { Id, status } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(Id)) {
+      return res.status(400).json({ FailureMessage: "Not a valid id" })
     }
-  const subtask=await SubTask.findOne({_id:Id})
-  if(!subtask){
-    return res.status(404).json({FailureMessage:"No task found"})
-  }
-  const updatedSUbTask=await SubTask.updateOne({_id:Id},{$set:{status:status}})
-  console.log(updatedSUbTask);
-await updateSubtaskProgress(subtask._id)
-await updateTaskProgress(subtask.task)
-  return res.status(200).json({SuccessMessage:"status updated successfully"})
+    const subtask = await SubTask.findOne({ _id: Id })
+    if (!subtask) {
+      return res.status(404).json({ FailureMessage: "No task found" })
+    }
+    const updatedSUbTask = await SubTask.updateOne({ _id: Id }, { $set: { status: status } })
+    console.log(updatedSUbTask);
+    await updateSubtaskProgress(subtask._id)
+    // await updateTaskProgress(subtask.task)
+    return res.status(200).json({ SuccessMessage: "status updated successfully" })
   } catch (error) {
-    return res.status(500).json({SuccessMessage:"Internal server error"})
-    
+    return res.status(500).json({ SuccessMessage: "Internal server error" })
+
   }
-  
+
 }
 
-module.exports = { CreateSubTask ,getSubTasksByTaskId,getSubTaskBySubId,fetchTeamByTaskId,updateSubTaskByID,deleteSubTaskById,updateSubTaskStatusById};
+module.exports = { CreateSubTask, getSubTasksByTaskId, getSubTaskBySubId, fetchTeamByTaskId, updateSubTaskByID, deleteSubTaskById, updateSubTaskStatusById };

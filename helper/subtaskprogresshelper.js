@@ -1,7 +1,6 @@
 const SubTask = require("../Modal/SubTaskModal");
+const updateTaskProgress = require('./taskprogresshelper')
 
-// Subtask progress update function
-// controller
 const updateSubtaskProgress = async (subtaskId) => {
   const subtask = await SubTask.findById(subtaskId);
   if (!subtask) return;
@@ -15,5 +14,11 @@ const updateSubtaskProgress = async (subtaskId) => {
 
   subtask.progress = statusProgressMap[subtask.status] || 0;
   await subtask.save();
+
+  // Cascade → update parent Task
+  if (subtask.task) {
+    await updateTaskProgress(subtask.task);
+  }
 };
-module.exports=updateSubtaskProgress
+
+module.exports = updateSubtaskProgress;

@@ -1,3 +1,4 @@
+const updateProjectProgress = require("../helper/projrectprogresshelper");
 const Project = require("../Modal/ProjectModal");
 const Task = require("../Modal/TaskModal");
 const mongoose = require("mongoose");
@@ -360,11 +361,12 @@ const updateProjectDetailsById = async (req, res) => {
     if (!project) {
       return res.status(404).json({ FailureMessage: "No project found" });
     }
-
+await updateProjectProgress(project._id)
     res.status(200).json({
       SuccessMessage: "Project details updated successfully",
       project,
     });
+
   } catch (error) {
     console.error("Update Project Error:", error.message, error.stack);
     res.status(500).json({ FailureMessage: "Internal server error" });
