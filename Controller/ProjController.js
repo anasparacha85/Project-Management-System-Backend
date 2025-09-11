@@ -382,14 +382,56 @@ const deleteProjectById=async(req,res)=>{
             return res.status(400).json({FailureMessage:"no project found"})
         }
         const deletedproject=await Project.deleteOne({_id:project._id,createdBy:project.createdBy})
-        res.status(200).json({SuccessMessage:'Project Deleted Successfully'})
+       return res.status(200).json({SuccessMessage:'Project Deleted Successfully'})
 
     } catch (error) {
-        res.status(500).json({FailureMessage:"Internal Server error"})
+      return  res.status(500).json({FailureMessage:"Internal Server error"})
         
     }
 }
+// Upload files by projectId
+const uploadfilesByProjectId = async (req, res) => {
+  try {
+    const { id: projectId } = req.params;
 
+    // Validate projectId
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+      return res.status(400).json({ FailureMessage: "Invalid project ID" });
+    }
 
+    // Validate uploaded files
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ FailureMessage: "No files uploaded" });
+    }
 
-module.exports = { fetchProjectReportById,fetchFilesByProjectId,fetchProjectDetailsById ,updateProjectDetailsById,deleteProjectById,fetchMilestonesByProjectId,updateProjectDetailsById};
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ FailureMessage: "Project not found" });
+    }
+
+    // Map uploaded files into a clean structure
+    const uploadedFiles = req.files.map((file) => ({
+      filename: file.originalname || file.filename,
+      url: file.path, // Cloudinary gives `path` as secure_url
+      size: file.size || 0,
+      uploadedAt: new Date(),
+    }));
+
+    // Push all new files in one go
+    project.files.push(...uploadedFiles);
+    await project.save();
+
+    return res.status(200).json({
+      SuccessMessage: "Files uploaded successfully",
+      files: uploadedFiles,
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return res.status(500).json({
+      FailureMessage: "Internal Server Error",
+      details: error.message,
+    });
+  }
+};
+
+module.exports = { fetchProjectReportById,fetchFilesByProjectId,fetchProjectDetailsById ,updateProjectDetailsById,deleteProjectById,fetchMilestonesByProjectId,updateProjectDetailsById,uploadfilesByProjectId};
