@@ -7,6 +7,7 @@ const ManagerRouter = require('./Route/ManagerRoute')
 const taskRouter = require('./Route/TaskRoute')
 const ProjectRouter = require('./Route/ProjectRoute')
 const SubTaskRouter = require('./Route/SubTaskRoute')
+const EmployeeRouter = require('./Route/EmployeeRoute')
 
 require('dotenv').config()
 
@@ -25,6 +26,7 @@ server.use('/api/manager',ManagerRouter)
 server.use('/api/project',ProjectRouter)
 server.use('/api/tasks',taskRouter)
 server.use('/api/subTask',SubTaskRouter)
+server.use('/api/employee',EmployeeRouter)
 
 const PORT=process.env.PORT|| 8080
 connectDb().then(()=>{

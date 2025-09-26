@@ -1,7 +1,7 @@
-const Project = require("../models/Project");
-const Task = require("../models/Task");
-const SubTask = require("../models/SubTask");
-const TimeLog = require("../models/TimeLog");
+const Project = require("../Modal/ProjectModal");
+const Task = require("../Modal/TaskModal");
+const SubTask = require("../Modal/SubTaskModal");
+const TimeLog = require("../Modal/Timelog");
 const mongoose = require("mongoose");
 
 const getProjectEmployeeReport = async (req, res) => {
@@ -114,4 +114,75 @@ const getProjectEmployeeReport = async (req, res) => {
   }
 };
 
-module.exports = { getProjectEmployeeReport };
+
+const getEmployeeProjects = async (req, res) => {
+  try {
+    const userId = req.user._id; // login user ka id (requireAuth se aata hai)
+
+    const projects = await Project.find({
+      "team.user": userId, // filter: user project team me hai
+    })
+      .populate("createdBy", "name email")
+      .populate({
+        path: "Tasks",
+        select: "title status assignees", // sirf basic fields
+      });
+
+    return res.status(200).json({ projects });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
+
+// controllers/EmployeeController.js
+
+
+const getEmployeeTasksByProject = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const projectId = req.params.id;
+
+    const tasks = await Task.find({
+      project: projectId,
+      "assignees.user": userId, // sirf wo tasks jisme employee assign hai
+    })
+      .populate("project", "name")
+      .populate("assignees.user", "name email avatarUrl");
+
+    return res.status(200).json({ tasks });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
+
+// controllers/EmployeeController.js
+
+
+const getEmployeeSubTasksByTask = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const taskId  = req.params.id;
+
+    const subtasks = await SubTask.find({
+      task: taskId,
+      "assignees.user": userId, // sirf wo subtasks jisme employee assign hai
+    })
+      .populate("task", "title")
+      .populate("assignees.user", "name email");
+
+    return res.status(200).json({ subtasks });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
+
+
+
+
+
+
+
+module.exports = { getProjectEmployeeReport,getEmployeeProjects,getEmployeeTasksByProject,getEmployeeSubTasksByTask };

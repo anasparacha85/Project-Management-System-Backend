@@ -156,11 +156,13 @@ const fetchtasksbyProjectId=async(req,res)=>{
 
 const fetchTeamByProjectId=async(req,res)=>{
   try {
+    console.log("hi");
+    
     const projectId=req.params.id;
     console.log(projectId);
     
     const Team=await Project.findOne({_id:projectId}).populate({path:'team.user'})
-    console.log(Team);
+    console.log("hi",Team);
     
     if(Team.length===0 || !Team){
       return res.status(403).json({FailureMessage:"No Team found"})
@@ -200,10 +202,11 @@ const fetchTaskByID=async(req,res)=>{
     
   }
 }
-const updateTaskByID = async (req, res) => {
+const updateManagerTaskByID = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+     console.log("you fetched manager update task by id");
 
     const existingTask = await Task.findById(id);
     if (!existingTask) {
@@ -217,6 +220,129 @@ const updateTaskByID = async (req, res) => {
 
     // Agar status update karna hai
     if (updates.status && updates.status !== existingTask.status) {
+        const allowedForManager = ["todo", "in-progress", "review","completed"];
+    if (!allowedForManager.includes(updates.status)) {
+      return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
+    }
+      if (updates.status === "ready-for-review") {
+      return res.status(403).json({ FailureMessage: "Managers cannot mark tasks as ready-for-review." });
+    }
+      const taskWithDeps = await Task.findById(id).populate("dependencies", "status");
+
+      if (!taskWithDeps) {
+        return res.status(404).json({ FailureMessage: "Task not found" });
+      }
+
+      // check karo dependencies completed hain ya nahi
+      const incompleteDeps = taskWithDeps.dependencies.filter(
+        (dep) => dep.status !== "completed"
+      );
+
+      if (incompleteDeps.length > 0) {
+        return res.status(400).json({
+          FailureMessage: "Cannot update status until all dependencies are completed",
+          incompleteDependencies: incompleteDeps.map((d) => ({
+            id: d._id,
+            title: d.title,
+            status: d.status,
+          })),
+        });
+      }
+    }
+
+    // ✅ Date validations sirf tabhi jab dates aayein
+    if (updates.startDate || updates.dueDate) {
+      const updatedTaskstartDate = updates.startDate ? new Date(updates.startDate) : null;
+      const updatedTaskDueDate = updates.dueDate ? new Date(updates.dueDate) : null;
+
+      const projectStartDate = new Date(project.startDate);
+      const projectEndDate = new Date(project.endDate);
+
+      // 1. Task apna start < end check
+      if (updatedTaskstartDate && updatedTaskDueDate && updatedTaskDueDate < updatedTaskstartDate) {
+        return res.status(400).json({
+          FailureMessage: "You cannot set the due date before the start date",
+        });
+      }
+
+      // 2. Project ke against check
+      if (updatedTaskstartDate && updatedTaskstartDate < projectStartDate) {
+        return res.status(400).json({
+          FailureMessage: "Task start date cannot be before the project start date",
+        });
+      }
+
+      if (updatedTaskDueDate && updatedTaskDueDate < projectStartDate) {
+        return res.status(400).json({
+          FailureMessage: "Task due date cannot be before the project start date",
+        });
+      }
+
+      if (updatedTaskstartDate && updatedTaskstartDate > projectEndDate) {
+        return res.status(400).json({
+          FailureMessage: "Task start date cannot be after the project end date",
+        });
+      }
+
+      if (updatedTaskDueDate && updatedTaskDueDate > projectEndDate) {
+        return res.status(400).json({
+          FailureMessage: "Task due date cannot be after the project end date",
+        });
+      }
+    }
+
+    // agar dependencies completed hain to update allow karo
+    const task = await Task.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .populate("assignees.user", "name email")
+      .populate("createdBy", "name email");
+
+   await  updateTaskProgress(task._id);
+    // await updateProjectProgress(task.project);
+
+
+    res.status(200).json({
+      SuccessMessage: "Task updated successfully",
+      task,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
+
+const updateEmployeeTaskByID = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+  
+    
+    console.log("you fetched employee update task by id");
+      console.log(updates);
+    
+
+    const existingTask = await Task.findById(id);
+    if (!existingTask) {
+      return res.status(404).json({ FailureMessage: "Task not found" });
+    }
+
+    const project = await Project.findById(existingTask.project);
+    if (!project) {
+      return res.status(404).json({ FailureMessage: "Project not found" });
+    }
+
+    // Agar status update karna hai
+    if (updates.status && updates.status !== existingTask.status) {
+       const allowedForEmployee = ["todo", "in-progress", "ready-for-review"];
+    if (!allowedForEmployee.includes(updates.status)) {
+      return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
+    }
+    
+       if (updates.status.toLowerCase() === "ready-for-review") {
+        updates.status="review"
+    }
       const taskWithDeps = await Task.findById(id).populate("dependencies", "status");
 
       if (!taskWithDeps) {
@@ -504,4 +630,4 @@ const fetchMilestoneReportById = async (req, res) => {
   }
 };
 
-module.exports={createTask,fetchMembersByProjectid,fetchtasksbyProjectId,deleteTaskById,fetchTeamByProjectId,fetchTaskByID,updateTaskByID,fetchMilestoneReportById}
+module.exports={createTask,fetchMembersByProjectid,fetchtasksbyProjectId,deleteTaskById,fetchTeamByProjectId,fetchTaskByID,updateManagerTaskByID,updateEmployeeTaskByID,fetchMilestoneReportById}
