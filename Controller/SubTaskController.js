@@ -4,6 +4,7 @@ const { default: mongoose } = require('mongoose');
 const updateTaskProgress = require('../helper/taskprogresshelper.js');
 const updateSubtaskStatus = require('../helper/subtaskprogresshelper.js');
 const updateSubtaskProgress = require('../helper/subtaskprogresshelper.js');
+const TimeLog = require('../Modal/Timelog.js');
 
 
 // ----------- Create SubTask API -----------
@@ -414,94 +415,179 @@ const deleteSubTaskById = async (req, res) => {
 const updateEmployeeSubTaskStatusById = async (req, res) => {
   try {
     let { Id, status } = req.body;
-    const userRole = req.user.role; // maan lo middleware se user ka role aa raha hai
-      console.log("abhi tmne eployee fetch kia hai");
+    const userId = req.user._id;
+
     if (!mongoose.Types.ObjectId.isValid(Id)) {
       return res.status(400).json({ FailureMessage: "Not a valid id" });
     }
 
-    const subtask = await SubTask.findOne({ _id: Id });
+    const subtask = await SubTask.findById(Id).populate("task");
     if (!subtask) {
       return res.status(404).json({ FailureMessage: "No task found" });
     }
 
-    // role-based restriction
+    // ❌ Restriction
     if (status === "completed") {
       return res.status(403).json({ FailureMessage: "Employees cannot mark tasks as Completed directly." });
     }
 
-    // Allowed transitions for employee
+    // ✅ Allowed
     const allowedForEmployee = ["todo", "in-progress", "ready-for-review"];
     if (!allowedForEmployee.includes(status)) {
       return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
     }
 
-    if(status.toLowerCase()==="ready-for-review"){
-      status="review"
+    if (status.toLowerCase() === "ready-for-review") {
+      status = "review";
     }
-    // Update subtask
-    const updatedSubTask = await SubTask.updateOne(
+
+    // =====================
+    // 🔹 TimeLog Logic
+    // =====================
+    if (status === "in-progress") {
+      // Check if already running timelog
+      const existingLog = await TimeLog.findOne({
+        subTask: subtask._id,
+        user: userId,
+        endTime: null
+      });
+
+      if (!existingLog) {
+        const newLog = await TimeLog.create({
+          project: subtask.task.project,   // parent project id
+          task: subtask.task._id,
+          subTask: subtask._id,
+          user: userId,
+          startTime: new Date(),
+          action: "started"
+        });
+
+        subtask.timeLogs.push(newLog._id);
+        await subtask.save();
+      }
+    }
+
+    if (status === "review") {
+      // Close the open log
+      const openLog = await TimeLog.findOne({
+        subTask: subtask._id,
+        user: userId,
+        endTime: null
+      });
+
+      if (openLog) {
+        openLog.endTime = new Date();
+        openLog.duration = openLog.endTime - openLog.startTime; // ms
+        openLog.action = "completed";
+        await openLog.save();
+      }
+    }
+
+    // =====================
+    // 🔹 Update SubTask Status
+    // =====================
+    await SubTask.updateOne(
       { _id: Id },
       { $set: { status: status } }
     );
 
-    console.log(updatedSubTask);
-
     await updateSubtaskProgress(subtask._id);
-    // await updateTaskProgress(subtask.task);
 
-    return res.status(200).json({ SuccessMessage: "Status updated successfully" });
+    return res.status(200).json({ SuccessMessage: "Status updated + TimeLog updated" });
 
   } catch (error) {
     console.error(error);
     return res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
 const updateManagerSubTaskStatusById = async (req, res) => {
   try {
     let { Id, status } = req.body;
-    const userRole = req.user.role;
-    console.log("abhi tmne manager fetch kia hai");
-     // maan lo middleware se user ka role aa raha hai
 
     if (!mongoose.Types.ObjectId.isValid(Id)) {
       return res.status(400).json({ FailureMessage: "Not a valid id" });
     }
 
-    const subtask = await SubTask.findOne({ _id: Id });
+    const subtask = await SubTask.findById(Id).populate("task").populate("assignees.user");
     if (!subtask) {
       return res.status(404).json({ FailureMessage: "No task found" });
     }
 
-    // role-based restriction
     if (status === "ready-for-review") {
       return res.status(403).json({ FailureMessage: "Managers cannot mark tasks as ready-for-review." });
     }
 
-    // Allowed transitions for employee
-    const allowedForManager = ["todo", "in-progress", "review","completed"];
+    const allowedForManager = ["todo", "in-progress", "review", "completed"];
     if (!allowedForManager.includes(status)) {
-      return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
+      return res.status(403).json({ FailureMessage: "Invalid status transition for manager." });
     }
 
-   
-    // Update subtask
-    const updatedSubTask = await SubTask.updateOne(
+    // =====================
+    // 🔹 Timelog Logic
+    // =====================
+    if (status === "in-progress") {
+      for (let assignee of subtask.assignees) {
+        const existingLog = await TimeLog.findOne({
+          subTask: subtask._id,
+          user: assignee.user,
+          endTime: null
+        });
+
+        if (!existingLog) {
+          const newLog = await TimeLog.create({
+            project: subtask.task.project,   // parent project id
+            task: subtask.task._id,          // parent task id
+            subTask: subtask._id,
+            user: assignee.user,
+            startTime: new Date(),
+            action: "started"
+          });
+
+          subtask.timeLogs.push(newLog._id);
+        }
+      }
+      await subtask.save();
+    }
+
+    if (status === "review" || status === "completed") {
+      for (let assignee of subtask.assignees) {
+        let log = await TimeLog.findOne({
+          subTask: subtask._id,
+          user: assignee.user,
+          endTime: null
+        });
+
+        if (log) {
+          log.endTime = new Date();
+          log.duration = log.endTime - log.startTime;
+          log.action = "completed";
+          await log.save();
+        }
+      }
+    }
+
+    // =====================
+    // 🔹 Update SubTask Status
+    // =====================
+    await SubTask.updateOne(
       { _id: Id },
       { $set: { status: status } }
     );
 
-    console.log(updatedSubTask);
-
     await updateSubtaskProgress(subtask._id);
-    // await updateTaskProgress(subtask.task);
-    const UpdatedData=await SubTask.find({task:subtask.task})
-    return res.status(200).json({ SuccessMessage: "Status updated successfully" ,UpdatedData:UpdatedData});
+
+    const UpdatedData = await SubTask.find({ task: subtask.task });
+    return res.status(200).json({
+      SuccessMessage: "Status updated successfully + TimeLogs handled",
+      UpdatedData
+    });
 
   } catch (error) {
     console.error(error);
     return res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
 
 module.exports = { CreateSubTask, getSubTasksByTaskId, getSubTaskBySubId, fetchTeamByTaskId, updateManagerSubTaskByID,updateEmployeeSubTaskByID, deleteSubTaskById, updateEmployeeSubTaskStatusById,updateManagerSubTaskStatusById };

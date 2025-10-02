@@ -41,6 +41,12 @@ assignees: [
         uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         uploadedAt: { type: Date, default: Date.now },
       },],
+      timeLogs: [
+  {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "TimeLog"
+  }
+],
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   dependencies:[{type:mongoose.Schema.Types.ObjectId,ref:"SubTask"}]

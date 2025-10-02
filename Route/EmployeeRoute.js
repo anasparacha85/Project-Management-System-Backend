@@ -6,4 +6,8 @@ const requireRole = require('../Middleware/requiredrole');
 EmployeeRouter.route('/getEmployeeProjects').get(requireAuth,requireRole('employee'),EmployeeController.getEmployeeProjects)
 EmployeeRouter.route('/getEmployeeTasksByProject/:id').get(requireAuth,requireRole('employee'),EmployeeController.getEmployeeTasksByProject)
 EmployeeRouter.route('/getEmployeeSubTasksByTask/:id').get(requireAuth,requireRole('employee'),EmployeeController.getEmployeeSubTasksByTask)
+EmployeeRouter.route('/getEmployeeTaskReport')
+  .get(requireAuth, EmployeeController.getEmployeeMilestoneReportByEmployeeId);
+
+
 module.exports=EmployeeRouter

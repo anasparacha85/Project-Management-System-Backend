@@ -180,9 +180,27 @@ const getEmployeeSubTasksByTask = async (req, res) => {
 };
 
 
+const getEmployeeMilestoneReportByEmployeeId = async (req, res) => {
+  try {
+    const { userId, MilestoneId } = req.body;
+    if (!userId || !MilestoneId) {
+      return res.status(400).json({ FailureMessage: "please provide id's" });
+    }
 
+    const data = await SubTask.find({ task: MilestoneId })
+      .populate([{ path: "timeLogs" }, { path: "task" }]);
 
+    res.status(200).json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
 
-
-
-module.exports = { getProjectEmployeeReport,getEmployeeProjects,getEmployeeTasksByProject,getEmployeeSubTasksByTask };
+module.exports = {
+  getProjectEmployeeReport,
+  getEmployeeProjects,
+  getEmployeeTasksByProject,
+  getEmployeeSubTasksByTask,
+  getEmployeeMilestoneReportByEmployeeId
+};
