@@ -7,7 +7,7 @@ EmployeeRouter.route('/getEmployeeProjects').get(requireAuth,requireRole('employ
 EmployeeRouter.route('/getEmployeeTasksByProject/:id').get(requireAuth,requireRole('employee'),EmployeeController.getEmployeeTasksByProject)
 EmployeeRouter.route('/getEmployeeSubTasksByTask/:id').get(requireAuth,requireRole('employee'),EmployeeController.getEmployeeSubTasksByTask)
 EmployeeRouter.route('/getEmployeeTaskReport')
-  .get(requireAuth, EmployeeController.getEmployeeMilestoneReportByEmployeeId);
+  .post(requireAuth, EmployeeController.getEmployeeMilestoneReportByEmployeeId);
 
 
 module.exports=EmployeeRouter

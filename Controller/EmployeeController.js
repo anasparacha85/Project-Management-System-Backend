@@ -3,6 +3,7 @@ const Task = require("../Modal/TaskModal");
 const SubTask = require("../Modal/SubTaskModal");
 const TimeLog = require("../Modal/Timelog");
 const mongoose = require("mongoose");
+const { User } = require("../Modal/User");
 
 const getProjectEmployeeReport = async (req, res) => {
   try {
@@ -180,23 +181,90 @@ const getEmployeeSubTasksByTask = async (req, res) => {
 };
 
 
+
 const getEmployeeMilestoneReportByEmployeeId = async (req, res) => {
   try {
     const { userId, MilestoneId } = req.body;
+
     if (!userId || !MilestoneId) {
-      return res.status(400).json({ FailureMessage: "please provide id's" });
+      return res.status(400).json({ FailureMessage: "Please provide both userId and MilestoneId" });
     }
 
-    const data = await SubTask.find({ task: MilestoneId })
-      .populate([{ path: "timeLogs" }, { path: "task" }]);
+    // 🔍 Step 1: Find all SubTasks for this Milestone (task = milestone)
+    const subTasks = await SubTask.find({ task: MilestoneId })
+      .populate({
+        path: "timeLogs",
+        match: { user: userId },
+        select: "startTime endTime duration user",
+      })
+      .populate({
+        path: "task",
+        select: "title",
+      });
 
-    res.status(200).json(data);
+    if (!subTasks.length) {
+      return res.status(404).json({ FailureMessage: "No SubTasks found for this milestone." });
+    }
+
+    // 🧮 Step 2: Calculate durations per subtask
+    let totalMinutes = 0;
+    const formattedSubtasks = subTasks.map((sub) => {
+  const totalSubMinutes = sub.timeLogs.reduce((sum, log) => {
+  const durationMs = log.duration || 0;
+  const durationMinutes = durationMs / (1000 * 60); // convert ms → minutes
+  return sum + durationMinutes;
+}, 0);
+
+      totalMinutes += totalSubMinutes;
+      return {
+        name: sub.title,
+        duration: formatDuration(totalSubMinutes),
+      };
+    });
+
+    // 👨‍💼 Step 3: Fetch employee info
+    const employee = await User.findById(userId).select("name email role avatarUrl");
+    if (!employee) {
+      return res.status(404).json({ FailureMessage: "Employee not found." });
+    }
+
+    // 🧱 Step 4: Prepare final report structure
+    const milestoneTitle = subTasks[0]?.task?.title || "Untitled Milestone";
+    const report = {
+      employee: {
+        id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        avatar: employee.avatarUrl,
+        role: employee.role,
+      },
+      milestone: {
+        id: MilestoneId,
+        title: milestoneTitle,
+        duration: formatDuration(totalMinutes),
+        subtasks: formattedSubtasks,
+      },
+      totalDuration: formatDuration(totalMinutes),
+    };
+
+    res.status(200).json({
+      SuccessMessage: "Employee milestone report generated successfully.",
+      report,
+    });
+
   } catch (error) {
     console.error(error);
-    res.status(500).json({ FailureMessage: "Internal server error" });
+    res.status(500).json({ FailureMessage: "Internal server error", error: error.message });
   }
 };
 
+// 🕒 Utility to convert minutes → readable time (e.g. "6h 40m")
+function formatDuration(totalMinutes) {
+  if (!totalMinutes) return "0m";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.round(totalMinutes % 60);
+  return `${hours > 0 ? `${hours}h ` : ""}${minutes}m`;
+}
 module.exports = {
   getProjectEmployeeReport,
   getEmployeeProjects,
