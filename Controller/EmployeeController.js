@@ -257,7 +257,78 @@ const getEmployeeMilestoneReportByEmployeeId = async (req, res) => {
     res.status(500).json({ FailureMessage: "Internal server error", error: error.message });
   }
 };
+const getEmployeeReportByProjectId= async (req, res) => {
+  try {
+    const { userId, projectId } = req.body;
 
+    if (!userId || !projectId)
+      return res.status(400).json({ FailureMessage: "Please provide userId and projectId" });
+
+    // 🔹 Fetch user info
+    const employee = await User.findById(userId).select("name email avatarUrl role");
+    if (!employee) return res.status(404).json({ FailureMessage: "Employee not found" });
+
+    // 🔹 Fetch all tasks (milestones) for this project
+    const milestones = await Task.find({ project: projectId }).populate('project');
+    console.log(milestones);
+    
+
+    const reportMilestones = [];
+    let totalDuration = 0;
+
+    for (const milestone of milestones) {
+      const subtasks = await SubTask.find({ task: milestone._id });
+
+      let milestoneDuration = 0;
+
+      for (const subtask of subtasks) {
+        const timeLogs = await TimeLog.find({
+          subTask: subtask._id,
+          user: userId
+        });
+
+        for (const log of timeLogs) {
+          milestoneDuration += log.duration;
+        }
+      }
+
+      reportMilestones.push({
+        id: milestone._id,
+        title: milestone.title,
+        duration: formatDuration2(milestoneDuration)
+      });
+
+      totalDuration += milestoneDuration;
+    }
+
+    const report = {
+      employee: {
+        id: employee._id,
+        name: employee.name,
+        email: employee.email,
+        avatar: employee.avatarUrl,
+        role: employee.role
+      },
+      project: {
+        id: projectId,
+        title: milestones?.[0]?.project.name || "Project",
+        milestones: reportMilestones
+      },
+      totalDuration: formatDuration2(totalDuration)
+    };
+
+    res.status(200).json(report);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+}
+const formatDuration2 = (ms) => {
+  const minutes = Math.floor(ms / (1000 * 60));
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
+};
 // 🕒 Utility to convert minutes → readable time (e.g. "6h 40m")
 function formatDuration(totalMinutes) {
   if (!totalMinutes) return "0m";
@@ -270,5 +341,6 @@ module.exports = {
   getEmployeeProjects,
   getEmployeeTasksByProject,
   getEmployeeSubTasksByTask,
-  getEmployeeMilestoneReportByEmployeeId
+  getEmployeeMilestoneReportByEmployeeId,
+  getEmployeeReportByProjectId
 };
