@@ -10,5 +10,6 @@ EmployeeRouter.route('/getEmployeeTaskReport')
   .post(requireAuth, EmployeeController.getEmployeeMilestoneReportByEmployeeId);
 EmployeeRouter.route('/getEmployeeProjectReport')
   .post(requireAuth, EmployeeController.getEmployeeReportByProjectId);
-
+EmployeeRouter.route('/takeBreak').post(requireAuth,EmployeeController.pauseTimeLog)
+EmployeeRouter.route('/resumeBreak').post(requireAuth,EmployeeController.resumeTimeLog)
 module.exports=EmployeeRouter

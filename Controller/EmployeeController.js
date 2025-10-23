@@ -336,11 +336,69 @@ function formatDuration(totalMinutes) {
   const minutes = Math.round(totalMinutes % 60);
   return `${hours > 0 ? `${hours}h ` : ""}${minutes}m`;
 }
+const pauseTimeLog = async (req, res) => {
+  try {
+    const { subTaskId } = req.body;
+    const userId = req.user._id;
+
+    const activeLog = await TimeLog.findOne({
+      subTask: subTaskId,
+      user: userId,
+      endTime: null,
+      action: { $ne: "paused" }
+    });
+
+    if (!activeLog) {
+      return res.status(404).json({ FailureMessage: "No active timelog found" });
+    }
+
+    // set endTime for this session
+    activeLog.endTime = new Date();
+    activeLog.duration += activeLog.endTime - activeLog.startTime;
+    activeLog.action = "paused";
+    await activeLog.save();
+
+    return res.status(200).json({ SuccessMessage: "Timelog paused successfully" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
+const resumeTimeLog = async (req, res) => {
+  try {
+    const { subTaskId } = req.body;
+    const userId = req.user._id;
+
+    // Create a new session instead of reopening the old one
+    const newLog = await TimeLog.create({
+      subTask: subTaskId,
+      user: userId,
+      project: req.body.projectId,
+      task: req.body.taskId,
+      startTime: new Date(),
+      action: "resumed"
+    });
+
+    // push to subtask timelog array
+    await SubTask.updateOne(
+      { _id: subTaskId },
+      { $push: { timeLogs: newLog._id } }
+    );
+
+    return res.status(200).json({ SuccessMessage: "Timelog resumed successfully" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ FailureMessage: "Internal server error" });
+  }
+};
+
 module.exports = {
   getProjectEmployeeReport,
   getEmployeeProjects,
   getEmployeeTasksByProject,
   getEmployeeSubTasksByTask,
   getEmployeeMilestoneReportByEmployeeId,
-  getEmployeeReportByProjectId
+  getEmployeeReportByProjectId,
+  pauseTimeLog,
+  resumeTimeLog
 };

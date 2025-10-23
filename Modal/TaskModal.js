@@ -35,8 +35,8 @@ const taskSchema = new mongoose.Schema({
     default: "Medium",
   },
 
-  startDate: { type: Date, default: Date.now },
-  dueDate: { type: Date },
+  startDate: { type: Date, default: null },
+  dueDate: { type: Date ,default:null},
 
   attachments: [
     {

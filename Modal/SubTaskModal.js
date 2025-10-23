@@ -31,8 +31,8 @@ assignees: [
     default: "Medium",
   },
 
-  startDate: { type: Date, default: Date.now },
-  dueDate: { type: Date },
+  startDate: { type: Date, default: null },
+  dueDate: { type: Date ,default:null},
 
   progress: { type: Number, default: 0 },
   attachments:[ {

@@ -3,8 +3,8 @@ const mongoose=require('mongoose')
 const projectSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
-  startDate: { type: Date, required: true },
-  endDate: { type: Date },
+  startDate: { type: Date ,default:null},
+  endDate: { type: Date,default:null },
   budget: { type: Number },
   priority: { type: String, enum: ["Low", "Medium", "High"], default: "Medium" },
   
