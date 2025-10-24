@@ -284,11 +284,11 @@ const updateManagerTaskByID = async (req, res) => {
         });
       }
 
-      if (updatedTaskDueDate && updatedTaskDueDate > projectEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task due date cannot be after the project end date",
-        });
-      }
+      // if (updatedTaskDueDate && updatedTaskDueDate > projectEndDate) {
+      //   return res.status(400).json({
+      //     FailureMessage: "Task due date cannot be after the project end date",
+      //   });
+      // }
     }
 
     // agar dependencies completed hain to update allow karo

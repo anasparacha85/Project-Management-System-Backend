@@ -373,8 +373,7 @@ const resumeTimeLog = async (req, res) => {
     const newLog = await TimeLog.create({
       subTask: subTaskId,
       user: userId,
-      project: req.body.projectId,
-      task: req.body.taskId,
+     
       startTime: new Date(),
       action: "resumed"
     });
