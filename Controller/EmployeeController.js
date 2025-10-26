@@ -345,7 +345,7 @@ const pauseTimeLog = async (req, res) => {
       subTask: subTaskId,
       user: userId,
       endTime: null,
-      action: { $ne: "paused" }
+     action: { $in: ["started", "resumed"] }
     });
 
     if (!activeLog) {
@@ -358,7 +358,7 @@ const pauseTimeLog = async (req, res) => {
     activeLog.action = "paused";
     await activeLog.save();
 
-    return res.status(200).json({ SuccessMessage: "Timelog paused successfully" });
+    return res.status(200).json({ SuccessMessage: "Break Started successfully" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ FailureMessage: "Internal server error" });
@@ -368,12 +368,16 @@ const resumeTimeLog = async (req, res) => {
   try {
     const { subTaskId } = req.body;
     const userId = req.user._id;
-
+    const subtask=await SubTask.findOne({_id:subTaskId}).populate('task')
+    console.log(subtask);
+  
+   
     // Create a new session instead of reopening the old one
     const newLog = await TimeLog.create({
       subTask: subTaskId,
       user: userId,
-     
+     task:subtask.task._id,
+      project:subtask.task.project,
       startTime: new Date(),
       action: "resumed"
     });
@@ -384,7 +388,7 @@ const resumeTimeLog = async (req, res) => {
       { $push: { timeLogs: newLog._id } }
     );
 
-    return res.status(200).json({ SuccessMessage: "Timelog resumed successfully" });
+    return res.status(200).json({ SuccessMessage: "Break Finished successfully" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ FailureMessage: "Internal server error" });

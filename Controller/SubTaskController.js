@@ -5,6 +5,7 @@ const updateTaskProgress = require('../helper/taskprogresshelper.js');
 const updateSubtaskStatus = require('../helper/subtaskprogresshelper.js');
 const updateSubtaskProgress = require('../helper/subtaskprogresshelper.js');
 const TimeLog = require('../Modal/Timelog.js');
+const handleSubtaskTimeLogStatusChange = require('../helper/SubTaskChangeProgressHelper.js');
 
 
 // ----------- Create SubTask API -----------
@@ -45,9 +46,9 @@ const CreateSubTask = async (req, res) => {
     if (SubTaskEndDate < TaskStartDate) {
       return res.status(400).json({ FailureMessage: "end date can not be before the milestone start date" })
     }
-    if (SubTaskEndDate > TaskEndDate) {
-      return res.status(400).json({ FailureMessage: "end date can not be after the milestone end date" })
-    }
+    // if (SubTaskEndDate > TaskEndDate) {
+    //   return res.status(400).json({ FailureMessage: "end date can not be after the milestone end date" })
+    // }
 
     // Parse assignees (array of { user, status })
     let parsedAssignees = [];
@@ -175,7 +176,9 @@ const updateManagerSubTaskByID = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-    const existingSubTask = await SubTask.findById(id);
+    const existingSubTask = await SubTask.findById(id)
+      .populate("task")
+      .populate("assignees.user");
     if (!existingSubTask) {
       return res.status(404).json({ FailureMessage: "SubTask not found" });
     }
@@ -185,35 +188,44 @@ const updateManagerSubTaskByID = async (req, res) => {
       return res.status(404).json({ FailureMessage: "Project not found" });
     }
 
-    // Agar status update karna hai
+    // ===========================
+    // 🔹 STATUS VALIDATION
+    // ===========================
     if (updates.status && updates.status !== existingSubTask.status) {
-        // Allowed transitions for employee
-        const allowedForManager = ["todo", "in-progress", "review","completed"];
-    if (!allowedForManager.includes(updates.status)) {
-      return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
-    }
-      if (updates.status === "ready-for-review") {
-      return res.status(403).json({ FailureMessage: "Managers cannot mark tasks as ready-for-review." });
-    }
-
-  
-  
-
-      const taskWithDeps = await SubTask.findById(id).populate("dependencies", "status");
-      
-
-      if (!taskWithDeps) {
-        return res.status(404).json({ FailureMessage: "Sub Task not found" });
+      const allowedForManager = ["todo", "in-progress", "review", "completed"];
+      if (!allowedForManager.includes(updates.status)) {
+        return res
+          .status(403)
+          .json({ FailureMessage: "Invalid status transition for manager." });
       }
 
-      // check karo dependencies completed hain ya nahi
+      if (updates.status === "ready-for-review") {
+        return res
+          .status(403)
+          .json({
+            FailureMessage: "Managers cannot mark tasks as ready-for-review.",
+          });
+      }
+
+      const taskWithDeps = await SubTask.findById(id).populate(
+        "dependencies",
+        "status"
+      );
+
+      if (!taskWithDeps) {
+        return res
+          .status(404)
+          .json({ FailureMessage: "Sub Task not found" });
+      }
+
       const incompleteDeps = taskWithDeps.dependencies.filter(
         (dep) => dep.status !== "completed"
       );
 
       if (incompleteDeps.length > 0) {
         return res.status(400).json({
-          FailureMessage: "Cannot update status until all dependencies are completed",
+          FailureMessage:
+            "Cannot update status until all dependencies are completed",
           incompleteDependencies: incompleteDeps.map((d) => ({
             id: d._id,
             title: d.title,
@@ -221,61 +233,106 @@ const updateManagerSubTaskByID = async (req, res) => {
           })),
         });
       }
+
+      // ===========================
+      // 🔹 TIMELOG LOGIC (copied & integrated)
+      // ===========================
+      if (updates.status === "in-progress") {
+        for (let assignee of existingSubTask.assignees) {
+          const existingLog = await TimeLog.findOne({
+            subTask: existingSubTask._id,
+            user: assignee.user,
+            endTime: null,
+          });
+
+          if (!existingLog) {
+            const newLog = await TimeLog.create({
+              project: existingSubTask.task.project, // parent project id
+              task: existingSubTask.task._id, // parent task id
+              subTask: existingSubTask._id,
+              user: assignee.user,
+              startTime: new Date(),
+              action: "started",
+            });
+
+            existingSubTask.timeLogs.push(newLog._id);
+          }
+        }
+        await existingSubTask.save();
+      }
+
+      if (updates.status === "review" || updates.status === "completed") {
+        for (let assignee of existingSubTask.assignees) {
+          const openLog = await TimeLog.findOne({
+            subTask: existingSubTask._id,
+            user: assignee.user,
+            endTime: null,
+          });
+
+          if (openLog) {
+            openLog.endTime = new Date();
+            openLog.duration = openLog.endTime - openLog.startTime;
+            openLog.action = "completed";
+            await openLog.save();
+          }
+        }
+      }
     }
 
-    // ✅ Date validations sirf tabhi jab dates aayein
+    // ===========================
+    // 🔹 DATE VALIDATIONS
+    // ===========================
     if (updates.startDate || updates.dueDate) {
-      const updatedSubTaskstartDate = updates.startDate ? new Date(updates.startDate) : null;
-      const updatedSubTaskDueDate = updates.dueDate ? new Date(updates.dueDate) : null;
+      const updatedStart = updates.startDate
+        ? new Date(updates.startDate)
+        : null;
+      const updatedDue = updates.dueDate ? new Date(updates.dueDate) : null;
 
       const taskStartDate = new Date(task.startDate);
       const taskEndDate = new Date(task.dueDate);
 
-      // 1. Task apna start < end check
-      if (updatedSubTaskstartDate && updatedSubTaskDueDate && updatedSubTaskDueDate < updatedSubTaskstartDate) {
+      if (updatedStart && updatedDue && updatedDue < updatedStart) {
         return res.status(400).json({
           FailureMessage: "You cannot set the due date before the start date",
         });
       }
 
-      // 2. Project ke against check
-      if (updatedSubTaskstartDate && updatedSubTaskstartDate < taskStartDate) {
+      if (updatedStart && updatedStart < taskStartDate) {
         return res.status(400).json({
-          FailureMessage: "Task start date cannot be before the project start date",
+          FailureMessage:
+            "Task start date cannot be before the project start date",
         });
       }
 
-      if (updatedSubTaskDueDate && updatedSubTaskDueDate < taskStartDate) {
+      if (updatedDue && updatedDue < taskStartDate) {
         return res.status(400).json({
-          FailureMessage: "Task due date cannot be before the project start date",
+          FailureMessage:
+            "Task due date cannot be before the project start date",
         });
       }
 
-      if (updatedSubTaskstartDate && updatedSubTaskstartDate > taskEndDate) {
+      if (updatedStart && updatedStart > taskEndDate) {
         return res.status(400).json({
-          FailureMessage: "Task start date cannot be after the project end date",
-        });
-      }
-
-      if (updatedSubTaskDueDate && updatedSubTaskDueDate > taskEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task due date cannot be after the project end date",
+          FailureMessage:
+            "Task start date cannot be after the project end date",
         });
       }
     }
 
-    // agar dependencies completed hain to update allow karo
+    // ===========================
+    // 🔹 UPDATE SUBTASK
+    // ===========================
     const subtask = await SubTask.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
     })
       .populate("assignees.user", "name email")
       .populate("createdBy", "name email");
-    await updateSubtaskProgress(subtask._id)
-    // updateTaskProgress(subtask.task);
 
-    res.status(200).json({
-      SuccessMessage: "SubTask updated successfully",
+    await updateSubtaskProgress(subtask._id);
+
+    return res.status(200).json({
+      SuccessMessage: "SubTask updated successfully + TimeLogs handled",
       subtask,
     });
   } catch (error) {
@@ -283,12 +340,14 @@ const updateManagerSubTaskByID = async (req, res) => {
     res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
 const updateEmployeeSubTaskByID = async (req, res) => {
   try {
     const { id } = req.params;
     let updates = req.body;
+    const userId = req.user._id;
 
-    const existingSubTask = await SubTask.findById(id);
+    const existingSubTask = await SubTask.findById(id).populate("task");
     if (!existingSubTask) {
       return res.status(404).json({ FailureMessage: "SubTask not found" });
     }
@@ -298,26 +357,23 @@ const updateEmployeeSubTaskByID = async (req, res) => {
       return res.status(404).json({ FailureMessage: "Task not found" });
     }
 
-    // Agar status update karna hai
+    // ============= STATUS LOGIC =============
     if (updates.status && updates.status !== existingSubTask.status) {
-      
-       
       const taskWithDeps = await SubTask.findById(id).populate("dependencies", "status");
-     
-        const allowedForEmployee = ["todo", "in-progress", "ready-for-review"];
-    if (!allowedForEmployee.includes(updates.status)) {
-      return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
-    }
-    
-       if (updates.status.toLowerCase() === "ready-for-review") {
-        updates.status="review"
-    }
+
+      const allowedForEmployee = ["todo", "in-progress", "ready-for-review"];
+      if (!allowedForEmployee.includes(updates.status)) {
+        return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
+      }
+
+      if (updates.status.toLowerCase() === "ready-for-review") {
+        updates.status = "review";
+      }
 
       if (!taskWithDeps) {
         return res.status(404).json({ FailureMessage: "Sub Task not found" });
       }
 
-      // check karo dependencies completed hain ya nahi
       const incompleteDeps = taskWithDeps.dependencies.filter(
         (dep) => dep.status !== "completed"
       );
@@ -332,9 +388,77 @@ const updateEmployeeSubTaskByID = async (req, res) => {
           })),
         });
       }
+
+      // ===========================
+      // 🔹 TimeLog Logic (added)
+      // ===========================
+       if(updates.status==="todo"){
+       const latTimeLog=await TimeLog.find({
+        subTask:existingSubTask._id,
+        user:userId
+      })
+      // res.status(200).json(latestTimeLog)
+  
+      const latestTimeLog=latTimeLog[latTimeLog.length-1]
+      console.log(latestTimeLog);
+      if(latestTimeLog.action=='paused'){
+        return res.status(400).json({FailureMessage:"please finish the break first"})
+      }
+      
+    }
+      if (updates.status === "in-progress") {
+        // Start a new time log if none is running
+        const existingLog = await TimeLog.findOne({
+          subTask: existingSubTask._id,
+          user: userId,
+          endTime: null,
+        });
+
+        if (!existingLog) {
+          const newLog = await TimeLog.create({
+            project: existingSubTask.task.project,
+            task: existingSubTask.task._id,
+            subTask: existingSubTask._id,
+            user: userId,
+            startTime: new Date(),
+            action: "started",
+          });
+
+          existingSubTask.timeLogs.push(newLog._id);
+          await existingSubTask.save();
+        }
+      }
+
+      if (updates.status === "review") {
+        const userLogs = await TimeLog.find({
+          subTask: existingSubTask._id,
+          user: userId,
+        });
+
+        const latestLog = userLogs[userLogs.length - 1];
+
+        if (latestLog && latestLog.action === "paused") {
+          return res.status(400).json({
+            FailureMessage: "Please finish the break first",
+          });
+        }
+
+        const openLog = await TimeLog.findOne({
+          subTask: existingSubTask._id,
+          user: userId,
+          endTime: null,
+        });
+
+        if (openLog) {
+          openLog.endTime = new Date();
+          openLog.duration = openLog.endTime - openLog.startTime;
+          openLog.action = "completed";
+          await openLog.save();
+        }
+      }
     }
 
-    // ✅ Date validations sirf tabhi jab dates aayein
+    // ✅ Date validation (unchanged)
     if (updates.startDate || updates.dueDate) {
       const updatedSubTaskstartDate = updates.startDate ? new Date(updates.startDate) : null;
       const updatedSubTaskDueDate = updates.dueDate ? new Date(updates.dueDate) : null;
@@ -342,51 +466,37 @@ const updateEmployeeSubTaskByID = async (req, res) => {
       const taskStartDate = new Date(task.startDate);
       const taskEndDate = new Date(task.dueDate);
 
-      // 1. Task apna start < end check
       if (updatedSubTaskstartDate && updatedSubTaskDueDate && updatedSubTaskDueDate < updatedSubTaskstartDate) {
-        return res.status(400).json({
-          FailureMessage: "You cannot set the due date before the start date",
-        });
+        return res.status(400).json({ FailureMessage: "You cannot set the due date before the start date" });
       }
 
-      // 2. Project ke against check
       if (updatedSubTaskstartDate && updatedSubTaskstartDate < taskStartDate) {
-        return res.status(400).json({
-          FailureMessage: "Task start date cannot be before the project start date",
-        });
+        return res.status(400).json({ FailureMessage: "Task start date cannot be before the project start date" });
       }
 
       if (updatedSubTaskDueDate && updatedSubTaskDueDate < taskStartDate) {
-        return res.status(400).json({
-          FailureMessage: "Task due date cannot be before the project start date",
-        });
+        return res.status(400).json({ FailureMessage: "Task due date cannot be before the project start date" });
       }
 
       if (updatedSubTaskstartDate && updatedSubTaskstartDate > taskEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task start date cannot be after the project end date",
-        });
-      }
-
-      if (updatedSubTaskDueDate && updatedSubTaskDueDate > taskEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task due date cannot be after the project end date",
-        });
+        return res.status(400).json({ FailureMessage: "Task start date cannot be after the project end date" });
       }
     }
 
-    // agar dependencies completed hain to update allow karo
+    // ===========================
+    // 🔹 Update SubTask
+    // ===========================
     const subtask = await SubTask.findByIdAndUpdate(id, updates, {
       new: true,
       runValidators: true,
     })
       .populate("assignees.user", "name email")
       .populate("createdBy", "name email");
-    await updateSubtaskProgress(subtask._id)
-    // updateTaskProgress(subtask.task);
 
-    res.status(200).json({
-      SuccessMessage: "SubTask updated successfully",
+    await updateSubtaskProgress(subtask._id);
+
+    return res.status(200).json({
+      SuccessMessage: "task updated successfully ",
       subtask,
     });
   } catch (error) {
@@ -394,6 +504,7 @@ const updateEmployeeSubTaskByID = async (req, res) => {
     res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
 //delete sub task
 const deleteSubTaskById = async (req, res) => {
   try {
@@ -444,6 +555,20 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
     // =====================
     // 🔹 TimeLog Logic
     // =====================
+    if(status==="todo"){
+       const latTimeLog=await TimeLog.find({
+        subTask:subtask._id,
+        user:userId
+      })
+      // res.status(200).json(latestTimeLog)
+  
+      const latestTimeLog=latTimeLog[latTimeLog.length-1]
+      console.log(latestTimeLog);
+      if(latestTimeLog.action=='paused'){
+        return res.status(400).json({FailureMessage:"please finish the break first"})
+      }
+      
+    }
     if (status === "in-progress") {
       // Check if already running timelog
       const existingLog = await TimeLog.findOne({
@@ -467,22 +592,44 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
       }
     }
 
+
     if (status === "review") {
+      const latTimeLog=await TimeLog.find({
+        subTask:subtask._id,
+        user:userId
+      })
+      // res.status(200).json(latestTimeLog)
+  
+      const latestTimeLog=latTimeLog[latTimeLog.length-1]
+      console.log(latestTimeLog);
+      if(latestTimeLog.action=='paused'){
+        return res.status(400).json({FailureMessage:"please finish the break first"})
+      }
+      
       // Close the open log
       const openLog = await TimeLog.findOne({
         subTask: subtask._id,
         user: userId,
-        endTime: null
+        endTime: null,
+        
       });
-
+    
       if (openLog) {
         openLog.endTime = new Date();
         openLog.duration = openLog.endTime - openLog.startTime; // ms
         openLog.action = "completed";
         await openLog.save();
       }
+      //  console.log("action==================================================================",openLog.action);
     }
+    // try {
+    //     await handleSubtaskTimeLogStatusChange(subtask, userId, status,res);
 
+    // } catch (error) {
+    //   return res.status(400).json({FailureMessage:error.message})
+      
+    // }
+  
     // =====================
     // 🔹 Update SubTask Status
     // =====================
@@ -500,6 +647,7 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
     return res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
 
 const updateManagerSubTaskStatusById = async (req, res) => {
   try {
@@ -528,6 +676,7 @@ const updateManagerSubTaskStatusById = async (req, res) => {
     // =====================
     if (status === "in-progress") {
       for (let assignee of subtask.assignees) {
+        
         const existingLog = await TimeLog.findOne({
           subTask: subtask._id,
           user: assignee.user,
@@ -552,6 +701,7 @@ const updateManagerSubTaskStatusById = async (req, res) => {
 
     if (status === "review" || status === "completed") {
       for (let assignee of subtask.assignees) {
+       
         let log = await TimeLog.findOne({
           subTask: subtask._id,
           user: assignee.user,

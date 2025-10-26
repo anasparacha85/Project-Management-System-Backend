@@ -149,7 +149,7 @@ const createProject = async (req, res) => {
       name,
       description,
       startDate,
-      endDate,
+       endDate: endDate ? endDate : null, 
       budget,
       priority,
       createdBy: userId,

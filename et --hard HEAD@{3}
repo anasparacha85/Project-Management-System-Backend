@@ -1,0 +1,18 @@
+[33m8394d71[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmybranch[m[33m, [m[1;31morigin/mybranch[m[33m)[m HEAD@{0}: commit: changes reversed
+[33md090d41[m HEAD@{1}: pull: Fast-forward
+[33mee0fa2a[m HEAD@{2}: reset: moving to HEAD
+[33mee0fa2a[m HEAD@{3}: commit: break log added
+[33m8e7ec39[m HEAD@{4}: commit: paused and resume added
+[33m276587a[m HEAD@{5}: commit: employee project report added
+[33mb7c18a2[m HEAD@{6}: commit: commit
+[33m9a2098e[m HEAD@{7}: commit: commit
+[33m9fb7c75[m HEAD@{8}: commit: commit again
+[33m0369129[m HEAD@{9}: commit: commit
+[33md0e9d9f[m HEAD@{10}: commit: commit
+[33m63d16cf[m HEAD@{11}: commit: commit
+[33m61abad8[m HEAD@{12}: commit: commit
+[33m76a8941[m HEAD@{13}: commit: commit
+[33mcfbeb03[m HEAD@{14}: commit: more functionalities added
+[33m15a77c8[m HEAD@{15}: commit: commit
+[33m7968ec4[m HEAD@{16}: Branch: renamed refs/heads/master to refs/heads/mybranch
+[33m7968ec4[m HEAD@{18}: commit (initial): first commit
