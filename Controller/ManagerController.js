@@ -89,7 +89,7 @@ const fetchEmployeesByQuery=async(req,res)=>{
 // @access  Authenticated (Admin/Manager)
 const createProject = async (req, res) => {
   try {
-    const {
+    let {
       name,
       description,
       startDate,
@@ -97,7 +97,7 @@ const createProject = async (req, res) => {
       budget,
       priority,
       teamName,
-      managerId,
+      // managerId,
       memberIds,
     } = req.body;
    
@@ -109,7 +109,7 @@ const createProject = async (req, res) => {
     console.log(userId);
     
 
-    if (!name || !startDate || !managerId) {
+    if (!name || !startDate ) {
       return res.status(400).json({ FailureMessage: "Required fields missing" });
     }
     const managerRole=await User.findById(req.user._id)
@@ -117,7 +117,7 @@ const createProject = async (req, res) => {
       return res.status(401).json({FailureMessage:"Your are not authorized for this role"})
     }
     // ✅ verify manager
-    const manager = await User.findById(managerId);
+    const manager = await User.findById(userId);
     if (!manager) {
       return res.status(404).json({ FailureMessage: "Manager not found" });
     }
@@ -143,13 +143,15 @@ const createProject = async (req, res) => {
       mimetype: file.mimetype,  // file type
       size: file.size           // optional: file size
     }));
-
+    if (endDate === "null" || endDate === "" || endDate === undefined) {
+  endDate = null;
+}
     // ✅ create project
     const project = await Project.create({
       name,
       description,
       startDate,
-       endDate: endDate ? endDate : null, 
+       endDate, 
       budget,
       priority,
       createdBy: userId,
@@ -162,9 +164,9 @@ const createProject = async (req, res) => {
       SuccessMessage: "Project created successfully",
       project,
     });
-  } catch (err) {
+  } catch (error) {
     console.error("Error creating project:", error);
-    res.status(500).json({ FailureMessage: "Server error", error: err.message });
+    res.status(500).json({ FailureMessage: "Server error", error: error.message });
   }
 };
 
