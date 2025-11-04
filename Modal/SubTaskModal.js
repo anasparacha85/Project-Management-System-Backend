@@ -47,6 +47,11 @@ assignees: [
     ref: "TimeLog"
   }
 ],
+ comments: [
+  {
+   type:mongoose.Schema.Types.ObjectId,ref:"Comment"
+  },
+],
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   dependencies:[{type:mongoose.Schema.Types.ObjectId,ref:"SubTask"}]

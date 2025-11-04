@@ -3,6 +3,7 @@
 //         const {}
 //     } catch (error) {
 
+const transporter  = require("../config/nodeMailerConfig");
 const updateProjectProgress = require("../helper/projrectprogresshelper");
 const Project = require("../Modal/ProjectModal");
 const Task = require("../Modal/TaskModal");
@@ -133,6 +134,7 @@ const createProject = async (req, res) => {
     members.forEach((m) => {
       if (m._id.toString() !== manager._id.toString()) {
         team.push({ user: m._id, role: "employee" });
+
       }
     });
 
@@ -160,10 +162,12 @@ const createProject = async (req, res) => {
       teamName  // save file info in DB
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       SuccessMessage: "Project created successfully",
       project,
     });
+   
+    
   } catch (error) {
     console.error("Error creating project:", error);
     res.status(500).json({ FailureMessage: "Server error", error: error.message });
