@@ -40,15 +40,19 @@ const addComment = async (req, res) => {
    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-const getAllCommentsByTargets=async(req,res)=>{
-   try {
+const getAllCommentsByTargets = async (req, res) => {
+  try {
     const { type, targetId } = req.params;
 
+    // Validate type
     if (!["task", "subtask"].includes(type)) {
       return res.status(400).json({ message: "Invalid type" });
     }
 
-    const comments = await Comment.find({ [type]: targetId })
+    // Capital T fix
+    const field = type === "task" ? "task" : "subTask";
+
+    const comments = await Comment.find({ [field]: targetId })
       .populate("createdBy", "name email profileImage")
       .sort({ createdAt: -1 });
 
@@ -61,6 +65,6 @@ const getAllCommentsByTargets=async(req,res)=>{
     console.error("Fetch comments error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
-}
+};
 
 module.exports={addComment,getAllCommentsByTargets}

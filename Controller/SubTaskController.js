@@ -141,7 +141,10 @@ const getSubTaskBySubId = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ FailureMessage: "not a valid id" })
     }
-    const subtask = await SubTask.findById(id).populate({ path: 'task' }).populate({ path: 'assignees.user' }).populate({ path: 'attachments.uploadedBy' }).populate({ path: 'createdBy' }).populate({path:'timeLogs'})
+    const subtask = await SubTask.findById(id).populate({ path: 'task' }).populate({ path: 'assignees.user' }).populate({ path: 'attachments.uploadedBy' }).populate({ path: 'createdBy' }).populate({path:'timeLogs'}).populate({
+        path: 'comments',
+        populate: { path: 'createdBy', select: 'name email profileImage avatarUrl' } // 👈 Populate inside comments
+      });
     if (!subtask) {
       return res.status(404).json({ FailureMessage: "No SubTask Found" })
     }
