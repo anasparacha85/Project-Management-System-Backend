@@ -22,7 +22,7 @@ const addComment = async (req, res) => {
     const newComment = new Comment({
       content,
       createdBy,
-      [type]: targetId,
+      [type==='task'?'task':'subTask']: targetId,
     });
 
     await newComment.save();
@@ -53,7 +53,7 @@ const getAllCommentsByTargets = async (req, res) => {
     const field = type === "task" ? "task" : "subTask";
 
     const comments = await Comment.find({ [field]: targetId })
-      .populate("createdBy", "name email profileImage")
+      .populate("createdBy", "name email  avatarUrl")
       .sort({ createdAt: -1 });
 
     res.json({

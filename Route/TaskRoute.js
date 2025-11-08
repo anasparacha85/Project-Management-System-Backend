@@ -12,4 +12,6 @@ taskRouter.route('/updateTaskById/:id').put(requireAuth,TaskController.updateMan
 taskRouter.route('/updateEmployeeTaskById/:id').put(requireAuth,TaskController.updateEmployeeTaskByID)
 taskRouter.route('/deleteTaskById/:id').delete(requireAuth,TaskController.deleteTaskById)
 taskRouter.route('/report/:id').get( requireAuth,TaskController.fetchMilestoneReportById);
+taskRouter.route('/uploadTaskFiles/:id').post(requireAuth,upload.any(),TaskController.uploadfilesByTaskId)
+
 module.exports=taskRouter

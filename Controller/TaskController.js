@@ -629,5 +629,48 @@ const fetchMilestoneReportById = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+const uploadfilesByTaskId = async (req, res) => {
+  try {
+    const { id: taskId } = req.params;
 
-module.exports={createTask,fetchMembersByProjectid,fetchtasksbyProjectId,deleteTaskById,fetchTeamByProjectId,fetchTaskByID,updateManagerTaskByID,updateEmployeeTaskByID,fetchMilestoneReportById}
+    // Validate projectId
+    if (!mongoose.Types.ObjectId.isValid(taskId)) {
+      return res.status(400).json({ FailureMessage: "Invalid milestone ID" });
+    }
+
+    // Validate uploaded files
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ FailureMessage: "No files uploaded" });
+    }
+
+    const milestone = await Task.findById(taskId);
+    if (!milestone) {
+      return res.status(404).json({ FailureMessage: "Milestone not found" });
+    }
+
+    // Map uploaded files into a clean structure
+    const uploadedFiles = req.files.map((file) => ({
+      filename: file.originalname || file.filename,
+      url: file.path, // Cloudinary gives `path` as secure_url
+      size: file.size || 0,
+      uploadedAt: new Date(),
+    }));
+
+    // Push all new files in one go
+    milestone.attachments.push(...uploadedFiles);
+    await milestone.save();
+
+    return res.status(200).json({
+      SuccessMessage: "Files uploaded successfully",
+      files: uploadedFiles,
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return res.status(500).json({
+      FailureMessage: "Internal Server Error",
+      details: error.message,
+    });
+  }
+};
+
+module.exports={createTask,uploadfilesByTaskId,fetchMembersByProjectid,fetchtasksbyProjectId,deleteTaskById,fetchTeamByProjectId,fetchTaskByID,updateManagerTaskByID,updateEmployeeTaskByID,fetchMilestoneReportById}
