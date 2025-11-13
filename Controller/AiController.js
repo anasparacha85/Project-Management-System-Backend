@@ -12,11 +12,11 @@ const GenerateDescription = async (req, res) => {
 
     let prompt = "";
 if (type === "project") {
-  prompt = `Give me a detailed summary for project "${name}" which i want to create`;
+  prompt = `Give me a brief detail for the project "${name}" which i want to create`;
 } else if (type === "milestone") {
-  prompt = `Give me a Detailed summary for the milestone "${name}" of the project "${parent}" in a friendly and professional way.`;
+  prompt = `Give me a brief detail for the milestone "${name}" of the project "${parent}" in a friendly and professional way.`;
 } else if (type === "checkpoint") {
-  prompt = `Give me a Detailed summary for the for the checkpoint "${name}" under the milestone "${parent}". Keep it human and direct.`;
+  prompt = `Give me a brief detail for the for the checkpoint "${name}" under the milestone "${parent}". Keep it human and direct.`;
 } else {
   prompt = `Write a short, clear, and natural description for "${name}".`;
 }

@@ -10,6 +10,9 @@ const SubTaskRouter = require('./Route/SubTaskRoute')
 const EmployeeRouter = require('./Route/EmployeeRoute')
 const AiRouter=require('./Route/AiRoute')
 const CommentsRouter = require('./Route/CommentsRoute')
+const { initSocket } = require('./socket/socket')
+const http = require('http');
+const NotificationRouter = require('./Route/NotificationRoute')
 
 
 require('dotenv').config()
@@ -19,7 +22,7 @@ server.use(cors({origin:`${process.env.FRONTEND_URL}`,credentials:true}))
 server.use(express.json())
 server.use(cookieParser())
 server.get("/",(req,res)=>{
-    res.status(200).json({SuccessMssage:"server started"})
+    res.status(200).json({SuccessMessage:"server started"})
 
 })
 console.log(process.env.CLOUDINARY_API_KEY ,process.env.CLOUDINARY_API_SECRET,process.env.CLOUDINARY_CLOUD_NAME);
@@ -32,10 +35,12 @@ server.use('/api/subTask',SubTaskRouter)
 server.use('/api/employee',EmployeeRouter)
 server.use('/api/ai',AiRouter)
 server.use('/api/comments',CommentsRouter)
-
+server.use('/api/notifications',NotificationRouter)
+const server2 = http.createServer(server);
+initSocket(server2);
 const PORT=process.env.PORT|| 8080
 connectDb().then(()=>{
-    server.listen(PORT,()=>{
+    server2.listen(PORT,()=>{
     console.log('server started');
     
 })

@@ -338,6 +338,8 @@ const updateProjectDetailsById = async (req, res) => {
   try {
     const managerId = req.user._id;
     const { name, description, budget, startDate, endDate, projectStatus, priority, projectId } = req.body;
+    console.log(projectId,"===========",name);
+    
 
     if (!mongoose.Types.ObjectId.isValid(projectId)) {
       return res.status(400).json({ FailureMessage: "Invalid project ID" });
