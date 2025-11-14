@@ -18,6 +18,7 @@ const notificationSchema = new mongoose.Schema({
   relatedProject: { type: mongoose.Schema.Types.ObjectId, ref: "Project" },
   relatedTask: { type: mongoose.Schema.Types.ObjectId, ref: "Task" },
   relatedSubTask: { type: mongoose.Schema.Types.ObjectId, ref: "SubTask" },
+  link:{type:String},
   isRead: {
     type: Boolean,
     default: false,
