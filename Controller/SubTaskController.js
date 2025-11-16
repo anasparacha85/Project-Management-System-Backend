@@ -767,7 +767,7 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
           project: parentTask.project,
           subTask: updated._id,
           title: 'SubTask Status Updated',
-          link: `/dashboard/subtask/${updated._id}`,
+          link: `/dashboard/milestone/${parentTask._id}/board`,
           emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${parentTask._id}/board`,
         });
       }
@@ -876,7 +876,7 @@ const updateManagerSubTaskStatusById = async (req, res) => {
               project: subtask.task ? subtask.task.project : undefined,
               subTask: subtask._id,
               title: 'SubTask Status Updated',
-              link: `/dashboard/subtask/${subtask._id}`,
+              link: `/dashboard/milestone/${subtask.rask}/board`,
               emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${subtask.task}/board`,
             })
           )
