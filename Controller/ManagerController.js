@@ -8,6 +8,7 @@ const updateProjectProgress = require("../helper/projrectprogresshelper");
 const Project = require("../Modal/ProjectModal");
 const Task = require("../Modal/TaskModal");
 const { User } = require("../Modal/User");
+const { notifyUser } = require('../helper/notifyUser');
 
 
 
@@ -161,6 +162,31 @@ const createProject = async (req, res) => {
       files, 
       teamName  // save file info in DB
     });
+    // Notify newly added team members (exclude manager)
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'A manager';
+      const notifyList = [];
+      // `members` contains the DB users fetched earlier
+      if (members && members.length > 0) {
+        members.forEach(m => {
+          if (m && String(m._id) !== String(manager._id)) {
+            notifyList.push(notifyUser({
+              type: 'project-assigned',
+              message: `You have been added to project '${project.name}' by ${actorName}.`,
+              recipientId: m._id,
+              project: project._id,
+              title: 'Added to Project',
+              link: `/dashboard/project/${project._id}`,
+              emailLink: `${process.env.FRONTEND_URL}/dashboard/project/${project._id}`
+            }));
+          }
+        });
+      }
+      // run notifications in parallel but don't block too long
+      if (notifyList.length > 0) await Promise.all(notifyList);
+    } catch (notifyErr) {
+      console.error('Notify error (createProject):', notifyErr);
+    }
 
     res.status(201).json({
       SuccessMessage: "Project created successfully",
@@ -220,6 +246,37 @@ const InviteMembersByProjectId = async (req, res) => {
     }
 
     await project.save();
+    // Notify invited members
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'A manager';
+      const notifyPromises = [];
+      if (Array.isArray(members) && members.length > 0) {
+        for (const member of members) {
+          // support shapes: { user: { _id: '...' } } or { user: 'id' } or just an id string
+          let recipientId = null;
+          if (member && member.user && member.user._id) recipientId = member.user._id;
+          else if (member && member.user) recipientId = member.user;
+          else if (member && member._id) recipientId = member._id;
+          else if (typeof member === 'string') recipientId = member;
+
+          if (recipientId) {
+            notifyPromises.push(notifyUser({
+              type: 'project-invite',
+              message: `${actorName} invited you to join project '${project.name}'.`,
+              recipientId,
+              project: project._id,
+              title: 'Project Invitation',
+              link: `/dashboard/project/${project._id}`,
+              emailLink: `${process.env.FRONTEND_URL}/dashboard/project/${project._id}`
+            }));
+          }
+        }
+      }
+      if (notifyPromises.length > 0) await Promise.all(notifyPromises);
+    } catch (notifyErr) {
+      console.error('Notify error (InviteMembersByProjectId):', notifyErr);
+    }
+
     return res.status(200).json({ SuccessMessage: "Invitations sent successfully" });
 
   } catch (error) {

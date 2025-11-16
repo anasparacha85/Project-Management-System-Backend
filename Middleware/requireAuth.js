@@ -8,9 +8,7 @@ const { verifyAccessToken } = require("../utils/jwtutils.js");
 const requireAuth=async(req, res, next)=> {
   try {
     // cookie se token read karna
-    console.log("cookies",req.cookies);
-    
-    const token = req.cookies?.token;
+    const token = req.header('Authorization')?.replace('Bearer ',"").trim();
    
     
     console.log("cookestoken",token);

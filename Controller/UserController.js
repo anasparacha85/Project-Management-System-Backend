@@ -35,7 +35,7 @@ const loginEmployee = async (req, res) => {
   if(!user){
     return res.status(401).json({FailureMessage:"Your account is not registered please signup first"})
   }
-const ok=await await user.comparePassword(password)
+const ok=await user.comparePassword(password)
   if (!ok) {
     return res.status(401).json({ FailureMessage: 'Invalid credentials' });
   }
@@ -51,12 +51,12 @@ console.log(user);
 
   // Cookie set karna
   //localhost
- res.cookie('token', token, {
-    httpOnly: true,   // JS se access nahi hoga
-   secure: false,       // dev ke liye false, prod me true
-  sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000, // 1 din
-  });
+//  res.cookie('token', token, {
+//     httpOnly: true,   // JS se access nahi hoga
+//    secure: false,       // dev ke liye false, prod me true
+//   sameSite: "lax",
+//     maxAge: 24 * 60 * 60 * 1000, // 1 din
+//   });
 
 //producttion
 //   res.cookie("token", token, {
@@ -66,7 +66,7 @@ console.log(user);
 //   maxAge: 24 * 60 * 60 * 1000,
 // });
 
-  return res.json({SuccessMessage: 'Login successful' });
+  return res.json({SuccessMessage: 'Login successful' ,token});
 };
 
 const loginManager = async (req, res) => {
@@ -88,12 +88,12 @@ const loginManager = async (req, res) => {
 
   // Cookie set karna
   //local host
-  res.cookie('token', token, {
-    httpOnly: true,   // JS se access nahi hoga
-   secure: false,       // dev ke liye false, prod me true
-  sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000, // 1 din
-  });
+  // res.cookie('token', token, {
+  //   httpOnly: true,   // JS se access nahi hoga
+  //  secure: false,       // dev ke liye false, prod me true
+  // sameSite: "lax",
+  //   maxAge: 24 * 60 * 60 * 1000, // 1 din
+  // });
   //production
 //   res.cookie("token", token, {
 //   httpOnly: true,
@@ -102,7 +102,7 @@ const loginManager = async (req, res) => {
 //   maxAge: 24 * 60 * 60 * 1000,
 // });
 
-  return res.json({ SuccessMessage: 'Login successful' });
+  return res.json({ SuccessMessage: 'Login successful' ,token});
 };
 
 

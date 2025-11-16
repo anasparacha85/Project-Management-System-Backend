@@ -1,4 +1,4 @@
-const mongoose=require('mongoose')
+const  mongoose  = require("mongoose");
 
 const projectSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -7,41 +7,72 @@ const projectSchema = new mongoose.Schema({
   endDate: { type: Date,default:null },
   budget: { type: Number },
   priority: { type: String, enum: ["Low", "Medium", "High"], default: "Medium" },
-  
-  // Project Creator (Admin/Manager)
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
-  // Assigned Members
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true   // 👈 Direct field index
+  },
+
   team: [
-
     {
-      user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      role: { type: String, enum: ["manager", "employee"] }
-    },
-    
-  ],
-  teamName: { type: String}, 
-
-  // Files/Documents
-  files: [
-    {
-      filename: String,
-      url: String,  // S3/Cloudinary/local path
-      uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      uploadedAt: { type: Date, default: Date.now }
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true // 👈 team.user per index
+      },
+      role: {
+        type: String,
+        enum: ["manager", "employee"],
+        index: true
+      }
     }
   ],
-  projectStatus:{
+
+  teamName: { type: String, index: true },
+
+  files: [
+    {
+      uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true // 👈 uploadedBy per index
+      }
+    }
+  ],
+
+  projectStatus: {
     type:String,
     enum:['draft','active','on Hold','Completed','archieve'],
-    default:'draft'
+    default:'draft',
+    index: true // 👈 status filter hota hai dashboard me
   },
-  Tasks:[{type:mongoose.Schema.Types.ObjectId ,ref:'Task'}],
 
-  // For Dashboard Progress
-  progress: { type: Number, default: 0 }, // % complete
+  Tasks:[{ type: mongoose.Schema.Types.ObjectId , ref:'Task' }],
+
+  progress: { type: Number, default: 0 },
 
 }, { timestamps: true });
 
-const Project=new mongoose.model("Project", projectSchema);
-module.exports=Project
+
+// ------------------------------------
+// ✅ Add compound indexes (VERY IMPORTANT)
+// ------------------------------------
+
+// 1) User ke sab projects fast find
+projectSchema.index({ createdBy: 1, projectStatus: 1 });
+
+// 2) Team members ke projects fast find
+projectSchema.index({ "team.user": 1 });
+
+// 3) Search by project name (case-insensitive)
+projectSchema.index({ name: "text" });
+
+// 4) Tasks query optimization
+projectSchema.index({ Tasks: 1 });
+
+// ------------------------------------
+
+const Project = mongoose.model("Project", projectSchema);
+module.exports = Project;

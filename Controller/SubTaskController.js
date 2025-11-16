@@ -4,6 +4,7 @@ const { default: mongoose } = require('mongoose');
 const updateTaskProgress = require('../helper/taskprogresshelper.js');
 const updateSubtaskStatus = require('../helper/subtaskprogresshelper.js');
 const updateSubtaskProgress = require('../helper/subtaskprogresshelper.js');
+const { notifyUser } = require('../helper/notifyUser');
 const TimeLog = require('../Modal/Timelog.js');
 const handleSubtaskTimeLogStatusChange = require('../helper/SubTaskChangeProgressHelper.js');
 
@@ -91,6 +92,29 @@ const CreateSubTask = async (req, res) => {
     await task.save();
     await updateSubtaskProgress(newSubTask._id)
     // await updateTaskProgress(task._id)
+
+    // Notify assignees about new subtask
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'A user';
+      if (parsedAssignees && parsedAssignees.length > 0) {
+        await Promise.all(
+          parsedAssignees.map((a) =>
+            notifyUser({
+              type: 'subtask-assigned',
+              message: `You have been assigned a new subtask '${newSubTask.title}' by ${actorName}.`,
+              recipientId: a.user || a.userId || a,
+              project: task.project,
+              subTask: newSubTask._id,
+              title: 'New SubTask Assigned',
+              link: `/dashboard/subtask/${newSubTask._id}`,
+              emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${newSubTask._id}`,
+            })
+          )
+        );
+      }
+    } catch (notifyErr) {
+      console.error('Notify error (CreateSubTask):', notifyErr);
+    }
 
     return res.status(201).json({
       SuccessMessage: "Subtask created successfully",
@@ -314,12 +338,12 @@ const updateManagerSubTaskByID = async (req, res) => {
         });
       }
 
-      if (updatedStart && updatedStart > taskEndDate) {
-        return res.status(400).json({
-          FailureMessage:
-            "Task start date cannot be after the project end date",
-        });
-      }
+      // if (updatedStart && updatedStart > taskEndDate) {
+      //   return res.status(400).json({
+      //     FailureMessage:
+      //       "Task start date cannot be after the project end date",
+      //   });
+      // }
     }
 
     // ===========================
@@ -333,6 +357,29 @@ const updateManagerSubTaskByID = async (req, res) => {
       .populate("createdBy", "name email");
 
     await updateSubtaskProgress(subtask._id);
+
+    // Notify assignees about manager update
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'A manager';
+      if (subtask && subtask.assignees && subtask.assignees.length > 0) {
+        await Promise.all(
+          subtask.assignees.map((a) =>
+            notifyUser({
+              type: 'subtask-updated',
+              message: `Subtask '${subtask.title}' was updated by ${actorName}.`,
+              recipientId: a.user._id || a.user,
+              project: task.project,
+              subTask: subtask._id,
+              title: 'SubTask Updated',
+              link: `/dashboard/subtask/${subtask._id}`,
+              emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${subtask._id}`,
+            })
+          )
+        );
+      }
+    } catch (notifyErr) {
+      console.error('Notify error (updateManagerSubTaskByID):', notifyErr);
+    }
 
     return res.status(200).json({
       SuccessMessage: "SubTask updated successfully + TimeLogs handled",
@@ -481,9 +528,9 @@ const updateEmployeeSubTaskByID = async (req, res) => {
         return res.status(400).json({ FailureMessage: "Task due date cannot be before the project start date" });
       }
 
-      if (updatedSubTaskstartDate && updatedSubTaskstartDate > taskEndDate) {
-        return res.status(400).json({ FailureMessage: "Task start date cannot be after the project end date" });
-      }
+      // if (updatedSubTaskstartDate && updatedSubTaskstartDate > taskEndDate) {
+      //   return res.status(400).json({ FailureMessage: "Task start date cannot be after the project end date" });
+      // }
     }
 
     // ===========================
@@ -497,6 +544,27 @@ const updateEmployeeSubTaskByID = async (req, res) => {
       .populate("createdBy", "name email");
 
     await updateSubtaskProgress(subtask._id);
+
+    // Notify manager (task creator) about employee update
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'An employee';
+      const updatedSubtask = await SubTask.findById(id).populate('assignees.user').populate('createdBy');
+      const parentTask = await Task.findById(updatedSubtask.task).populate('createdBy');
+      if (parentTask && parentTask.createdBy && parentTask.createdBy._id) {
+        await notifyUser({
+          type: 'subtask-status-updated',
+          message: `Subtask '${updatedSubtask.title}' status was updated by ${actorName}.`,
+          recipientId: parentTask.createdBy._id,
+          project: parentTask.project,
+          subTask: updatedSubtask._id,
+          title: 'SubTask Status Updated',
+          link: `/dashboard/subtask/${updatedSubtask._id}`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${updatedSubtask._id}`,
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Notify error (updateEmployeeSubTaskByID):', notifyErr);
+    }
 
     return res.status(200).json({
       SuccessMessage: "task updated successfully ",
@@ -519,7 +587,50 @@ const deleteSubTaskById = async (req, res) => {
     if (!subtask) {
       return res.status(404).json({ FailureMessage: "No Task Found" })
     }
+    // capture actor name
+    const actorName = req.user && req.user.name ? req.user.name : 'A user';
+
+    // populate assignees and createdBy for notifications
+    const populated = await SubTask.findById(id).populate('assignees.user').populate('createdBy');
+
     await SubTask.deleteOne({ _id: subtask._id })
+
+    // notify assignees and creator
+    try {
+      const notifyList = [];
+      if (populated && populated.assignees && populated.assignees.length > 0) {
+        populated.assignees.forEach(a => {
+          notifyList.push(notifyUser({
+            type: 'subtask-deleted',
+            message: `Subtask '${populated.title}' was deleted by ${actorName}.`,
+            recipientId: a.user._id || a.user,
+            project: populated.task ? populated.task.project : undefined,
+            subTask: populated._id,
+            title: 'SubTask Deleted',
+            link: `/dashboard/subtask/${populated._id}`,
+            emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${populated._id}`,
+          }));
+        });
+      }
+
+      if (populated && populated.createdBy && populated.createdBy._id) {
+        notifyList.push(notifyUser({
+          type: 'subtask-deleted',
+          message: `Subtask '${populated.title}' was deleted by ${actorName}.`,
+          recipientId: populated.createdBy._id,
+          project: populated.task ? populated.task.project : undefined,
+          subTask: populated._id,
+          title: 'SubTask Deleted',
+          link: `/dashboard/subtask/${populated._id}`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${populated._id}`,
+        }));
+      }
+
+      await Promise.all(notifyList);
+    } catch (notifyErr) {
+      console.error('Notify error (deleteSubTaskById):', notifyErr);
+    }
+
     res.status(200).json({ SuccessMessage: "task deleted successfully" })
   } catch (error) {
     res.status(500).json({ FailureMessage: "Internal server error" })
@@ -643,6 +754,27 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
 
     await updateSubtaskProgress(subtask._id);
 
+    // Notify manager (task creator) about employee status change
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'An employee';
+      const updated = await SubTask.findById(Id).populate('task');
+      const parentTask = updated && updated.task ? await Task.findById(updated.task).populate('createdBy') : null;
+      if (parentTask && parentTask.createdBy && parentTask.createdBy._id) {
+        await notifyUser({
+          type: 'subtask-status-updated',
+          message: `Subtask '${updated.title}' status was changed to '${status}' by ${actorName}.`,
+          recipientId: parentTask.createdBy._id,
+          project: parentTask.project,
+          subTask: updated._id,
+          title: 'SubTask Status Updated',
+          link: `/dashboard/subtask/${updated._id}`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${parentTask._id}/board`,
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Notify error (updateEmployeeSubTaskStatusById):', notifyErr);
+    }
+
     return res.status(200).json({ SuccessMessage: "Status updated + TimeLog updated" });
 
   } catch (error) {
@@ -730,7 +862,30 @@ const updateManagerSubTaskStatusById = async (req, res) => {
 
     await updateSubtaskProgress(subtask._id);
 
-    const UpdatedData = await SubTask.find({ task: subtask.task });
+    const UpdatedData = await SubTask.find({ task: subtask.task }).populate("task")
+    // Notify assignees about manager status change
+    try {
+      const actorName = req.user && req.user.name ? req.user.name : 'A manager';
+      if (subtask && subtask.assignees && subtask.assignees.length > 0) {
+        await Promise.all(
+          subtask.assignees.map(a =>
+            notifyUser({
+              type: 'subtask-status-updated-by-manager',
+              message: `Subtask '${subtask.title}' status was changed to '${status}' by ${actorName}.`,
+              recipientId: a.user._id || a.user,
+              project: subtask.task ? subtask.task.project : undefined,
+              subTask: subtask._id,
+              title: 'SubTask Status Updated',
+              link: `/dashboard/subtask/${subtask._id}`,
+              emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${subtask.task}/board`,
+            })
+          )
+        );
+      }
+    } catch (notifyErr) {
+      console.error('Notify error (updateManagerSubTaskStatusById):', notifyErr);
+    }
+
     return res.status(200).json({
       SuccessMessage: "Status updated successfully + TimeLogs handled",
       UpdatedData

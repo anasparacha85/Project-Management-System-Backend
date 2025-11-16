@@ -4,86 +4,63 @@ const updateTaskProgress = require("../helper/taskprogresshelper");
 const Project = require("../Modal/ProjectModal");
 const Task = require("../Modal/TaskModal");
 const { User } =require("../Modal/User");
+const { notifyUser } = require("../helper/notifyUser");
 const createTask = async (req, res) => {
   try {
-     const projectId=req.params.id
-    const { title, description,   priority, startDate, dueDate, milestone } = req.body;
+    const projectId = req.params.id;
+    const { title, description, priority, startDate, dueDate, milestone } = req.body;
     const userId = req.user._id;
-  
-console.log(req.files);
-
-
 
     if (!title || !projectId) {
       return res.status(400).json({ FailureMessage: "Task title and projectId are required" });
     }
 
-    const project = await Project.findById(projectId);
+    const project = await Project.findById(projectId).lean();
     if (!project) {
       return res.status(404).json({ FailureMessage: "Project not found" });
     }
-    let StartDate=new Date(startDate);
-    let ProjectStartDate=new Date(project.startDate)
-    let DueDate=new Date(dueDate);
-    let ProjectDueDate=new Date(project.endDate)
-    if(StartDate<ProjectStartDate){
-      return res.status(400).json({FailureMessage:"start date can not be set before the project start date"})
+
+    // DATE VALIDATION (fast)
+    const StartDate = new Date(startDate);
+    const DueDate = new Date(dueDate);
+    const PS = new Date(project.startDate);
+    const PD = new Date(project.endDate);
+
+    if (StartDate < PS || DueDate < PS || StartDate > PD || DueDate > PD) {
+      return res.status(400).json({ FailureMessage: "Invalid date range" });
     }
-   else if(DueDate<ProjectStartDate){
-      return res.status(400).json({FailureMessage:"milestone can no be finished before project start"})
+
+    // Parse JSON safely
+    let assigneeIds = req.body.assigneeIds;
+    if (typeof assigneeIds === "string") {
+      assigneeIds = JSON.parse(assigneeIds || "[]");
     }
-   else if(startDate>ProjectDueDate){
-      return res.status(400).json({FailureMessage:"milestone can not be started after project ends"})
+
+    let dependencies = req.body.dependencies;
+    if (typeof dependencies === "string") {
+      dependencies = JSON.parse(dependencies || "[]");
     }
-    else if(DueDate>ProjectDueDate){
-      return res.status(400).json({FailureMessage:"milestone can not ends after the project ends"})
-    }
-    
-    
-    
 
-  let assigneeIds = req.body.assigneeIds;
+    // Efficient Users Fetch
+    const users = await User.find({ _id: { $in: assigneeIds } }).lean();
 
-// agar frontend se JSON string aaya hai to parse karo
-if (typeof assigneeIds === "string") {
-  try {
-    assigneeIds = JSON.parse(assigneeIds);
-  } catch (e) {
-    assigneeIds = [];
-  }
-}
+    const assignees = users.map(u => ({
+      user: u._id,
+      status: "todo"
+    }));
 
-let assignees = [];
-if (assigneeIds && assigneeIds.length > 0) {
-  const users = await User.find({ _id: { $in: assigneeIds } });
-  assignees = users.map(u => ({
-    user: u._id,
-    status: "todo"
-  }));
-}
-let dependencies = req.body.dependencies;
-if (typeof dependencies === "string") {
-  try {
-    dependencies = JSON.parse(dependencies);
-  } catch (e) {
-    dependencies = [];
-  }
-}
+    const attachments = (req.files || []).map(file => ({
+      filename: file.originalname || file.filename,
+      url: file.path,
+      uploadedBy: userId,
+      uploadedAt: new Date()
+    }));
 
-const attachments = (req.files || []).map(file => ({
-  filename: file.originalname || file.filename,
-  url: file.path,
-  uploadedBy: req.user._id,   // jisne file upload ki
-  uploadedAt: new Date(),     // current time
-}));
-
-
-    
-
+    // Create Task
     const task = await Task.create({
       title,
       description,
-      project: project._id,
+      project: projectId,
       assignees,
       priority,
       startDate,
@@ -92,14 +69,26 @@ const attachments = (req.files || []).map(file => ({
       milestone,
       createdBy: userId,
       attachments
-      
-      
     });
-    project.Tasks.push(task._id)
-   await  project.save()
+const relativeLink = `/dashboard/milestone/${task._id}`; // For React Router
+const absoluteLink = `${process.env.FRONTEND_URL}${relativeLink}`; // For emails    // Fast push
+    await Project.updateOne({ _id: projectId }, { $push: { Tasks: task._id } });
 
-    await updateTaskProgress(task._id);
-    // await updateProjectProgress(project._id);
+    // FAST NOTIFICATIONS
+    await Promise.all(
+      assignees.map(a =>
+        notifyUser({
+          type: "task-assigned",
+          message: `You have been assigned a new task: ${task.title}`,
+          recipientId: a.user,
+          project: projectId,
+          task: task._id,
+          title: "New Milestone Assigned",
+          link:relativeLink,
+          emailLink:absoluteLink
+        })
+      )
+    );
 
     return res.status(201).json({
       SuccessMessage: "Task created successfully",
@@ -278,11 +267,11 @@ const updateManagerTaskByID = async (req, res) => {
         });
       }
 
-      if (updatedTaskstartDate && updatedTaskstartDate > projectEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task start date cannot be after the project end date",
-        });
-      }
+      // if (updatedTaskstartDate && updatedTaskstartDate > projectEndDate) {
+      //   return res.status(400).json({
+      //     FailureMessage: "Task start date cannot be after the project end date",
+      //   });
+      // }
 
       // if (updatedTaskDueDate && updatedTaskDueDate > projectEndDate) {
       //   return res.status(400).json({
@@ -299,9 +288,26 @@ const updateManagerTaskByID = async (req, res) => {
       .populate("assignees.user", "name email")
       .populate("createdBy", "name email");
 
-   await  updateTaskProgress(task._id);
-    // await updateProjectProgress(task.project);
+    await updateTaskProgress(task._id);
 
+    // Notify all assignees about the update
+    const actorName = req.user && req.user.name ? req.user.name : "A manager";
+    if (task && task.assignees && task.assignees.length > 0) {
+      await Promise.all(
+        task.assignees.map(a =>
+          notifyUser({
+            type: "task-updated",
+            message: `Task '${task.title}' was updated by ${actorName}.`,
+            recipientId: a.user._id || a.user,
+            project: task.project,
+            task: task._id,
+            title: "Task Updated",
+            link: `/dashboard/milestone/${task._id}`,
+            emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${task._id}`
+          })
+        )
+      );
+    }
 
     res.status(200).json({
       SuccessMessage: "Task updated successfully",
@@ -394,17 +400,17 @@ const updateEmployeeTaskByID = async (req, res) => {
         });
       }
 
-      if (updatedTaskstartDate && updatedTaskstartDate > projectEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task start date cannot be after the project end date",
-        });
-      }
+      // if (updatedTaskstartDate && updatedTaskstartDate > projectEndDate) {
+      //   return res.status(400).json({
+      //     FailureMessage: "Task start date cannot be after the project end date",
+      //   });
+      // }
 
-      if (updatedTaskDueDate && updatedTaskDueDate > projectEndDate) {
-        return res.status(400).json({
-          FailureMessage: "Task due date cannot be after the project end date",
-        });
-      }
+      // if (updatedTaskDueDate && updatedTaskDueDate > projectEndDate) {
+      //   return res.status(400).json({
+      //     FailureMessage: "Task due date cannot be after the project end date",
+      //   });
+      // }
     }
 
     // agar dependencies completed hain to update allow karo
@@ -415,9 +421,22 @@ const updateEmployeeTaskByID = async (req, res) => {
       .populate("assignees.user", "name email")
       .populate("createdBy", "name email");
 
-   await  updateTaskProgress(task._id);
-    // await updateProjectProgress(task.project);
+    await updateTaskProgress(task._id);
 
+    // Notify manager (creator) about employee status update
+    const actorName = req.user && req.user.name ? req.user.name : "An employee";
+    if (task && task.createdBy && task.createdBy._id) {
+      await notifyUser({
+        type: "task-status-updated",
+        message: `Task '${task.title}' status was updated by ${actorName} to '${updates.status}'.`,
+        recipientId: task.createdBy._id,
+        project: task.project,
+        task: task._id,
+        title: "Task Status Updated",
+        link: `/dashboard/milestone/${task._id}`,
+        emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${task._id}`
+      });
+    }
 
     res.status(200).json({
       SuccessMessage: "Task updated successfully",
@@ -431,20 +450,55 @@ const updateEmployeeTaskByID = async (req, res) => {
 
 
 
-const deleteTaskById=async(req,res)=>{
+const deleteTaskById = async (req, res) => {
   try {
-    const id=req.params.id;
-    const task=await Task.findById(id);
-    if(!task){
-      return res.status(404).json({FailureMessage:"No Task Found"})
+    const id = req.params.id;
+    const task = await Task.findById(id).populate("assignees.user").populate("createdBy");
+    if (!task) {
+      return res.status(404).json({ FailureMessage: "No Task Found" });
     }
-    await Task.deleteOne({_id:task._id})
-    res.status(200).json({SuccessMessage:"milestone deleted successfully"})
+    await Task.deleteOne({ _id: task._id });
+
+    // Notify all assignees and creator about deletion
+    const actorName = req.user && req.user.name ? req.user.name : "A manager";
+    const notifyList = [];
+    if (task.assignees && task.assignees.length > 0) {
+      task.assignees.forEach(a => {
+        notifyList.push(
+          notifyUser({
+            type: "task-deleted",
+            message: `Task '${task.title}' has been deleted by ${actorName}.`,
+            recipientId: a.user._id || a.user,
+            project: task.project,
+            task: task._id,
+            title: "Task Deleted",
+            link: `/dashboard/milestone/${task._id}`,
+            emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${task._id}`
+          })
+        );
+      });
+    }
+    if (task.createdBy && task.createdBy._id) {
+      notifyList.push(
+        notifyUser({
+          type: "task-deleted",
+          message: `Task '${task.title}' has been deleted by ${actorName}.`,
+          recipientId: task.createdBy._id,
+          project: task.project,
+          task: task._id,
+          title: "Task Deleted",
+          link: `/dashboard/milestone/${task._id}`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${task._id}`
+        })
+      );
+    }
+    await Promise.all(notifyList);
+
+    res.status(200).json({ SuccessMessage: "milestone deleted successfully" });
   } catch (error) {
-    res.status(500).json({FailureMessage:"Internal server error"})
-    
+    res.status(500).json({ FailureMessage: "Internal server error" });
   }
-}
+};
 const fetchMilestoneReportById = async (req, res) => {
   try {
     const milestoneId = new mongoose.Types.ObjectId(req.params.id);
@@ -643,7 +697,7 @@ const uploadfilesByTaskId = async (req, res) => {
       return res.status(400).json({ FailureMessage: "No files uploaded" });
     }
 
-    const milestone = await Task.findById(taskId);
+    const milestone = await Task.findById(taskId).populate("assignees.user").populate("createdBy");
     if (!milestone) {
       return res.status(404).json({ FailureMessage: "Milestone not found" });
     }
@@ -659,6 +713,41 @@ const uploadfilesByTaskId = async (req, res) => {
     // Push all new files in one go
     milestone.attachments.push(...uploadedFiles);
     await milestone.save();
+
+    // Notify all assignees and creator about new file upload
+    const actorName = req.user && req.user.name ? req.user.name : "A user";
+    const notifyList = [];
+    if (milestone.assignees && milestone.assignees.length > 0) {
+      milestone.assignees.forEach(a => {
+        notifyList.push(
+          notifyUser({
+            type: "task-file-uploaded",
+            message: `New files have been uploaded to task '${milestone.title}' by ${actorName}.`,
+            recipientId: a.user._id || a.user,
+            project: milestone.project,
+            task: milestone._id,
+            title: "Files Uploaded",
+            link: `/dashboard/milestone/${milestone._id}`,
+            emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${milestone._id}`
+          })
+        );
+      });
+    }
+    if (milestone.createdBy && milestone.createdBy._id) {
+      notifyList.push(
+        notifyUser({
+          type: "task-file-uploaded",
+          message: `New files have been uploaded to task '${milestone.title}' by ${actorName}.`,
+          recipientId: milestone.createdBy._id,
+          project: milestone.project,
+          task: milestone._id,
+          title: "Files Uploaded",
+          link: `/dashboard/milestone/${milestone._id}`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/milestone/${milestone._id}`
+        })
+      );
+    }
+    await Promise.all(notifyList);
 
     return res.status(200).json({
       SuccessMessage: "Files uploaded successfully",

@@ -3,12 +3,15 @@ const mongoose = require("mongoose");
 const notificationSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ["comment", "task-assigned", "status-change", "attachment", "custom"],
+    // enum: ["comment", "task-assigned", "status-change", "attachment", "custom"],
     required: true,
   },
   message: {
     type: String,
     required: true,
+  },
+  title:{
+    type:String
   },
   recipient: {
     type: mongoose.Schema.Types.ObjectId,

@@ -17,35 +17,41 @@ const NotificationRouter = require('./Route/NotificationRoute')
 
 require('dotenv').config()
 
-const server=express()
-server.use(cors({origin:`${process.env.FRONTEND_URL}`,credentials:true}))
-server.use(express.json())
-server.use(cookieParser())
-server.get("/",(req,res)=>{
-    res.status(200).json({SuccessMessage:"server started"})
+// create express app
+const app = express()
+
+// create http server from express app
+const server = http.createServer(app)
+
+// initialize socket.io with the HTTP server (initSocket should return io)
+const io = initSocket(server)
+
+app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }))
+app.use(express.json())
+app.use(cookieParser())
+app.get("/", (req, res) => {
+    res.status(200).json({ SuccessMessage: "server started" })
 
 })
-console.log(process.env.CLOUDINARY_API_KEY ,process.env.CLOUDINARY_API_SECRET,process.env.CLOUDINARY_CLOUD_NAME);
+console.log(process.env.CLOUDINARY_API_KEY, process.env.CLOUDINARY_API_SECRET, process.env.CLOUDINARY_CLOUD_NAME);
 
-server.use('/api/auth',UserRouter)
-server.use('/api/manager',ManagerRouter)
-server.use('/api/project',ProjectRouter)
-server.use('/api/tasks',taskRouter)
-server.use('/api/subTask',SubTaskRouter)
-server.use('/api/employee',EmployeeRouter)
-server.use('/api/ai',AiRouter)
-server.use('/api/comments',CommentsRouter)
-server.use('/api/notifications',NotificationRouter)
-const server2 = http.createServer(server);
-initSocket(server2);
-const PORT=process.env.PORT|| 8080
-connectDb().then(()=>{
-    server2.listen(PORT,()=>{
-    console.log('server started');
-    
-})
+app.use('/api/auth', UserRouter)
+app.use('/api/manager', ManagerRouter)
+app.use('/api/project', ProjectRouter)
+app.use('/api/tasks', taskRouter)
+app.use('/api/subTask', SubTaskRouter)
+app.use('/api/employee', EmployeeRouter)
+app.use('/api/ai', AiRouter)
+app.use('/api/comments', CommentsRouter)
+app.use('/api/notifications', NotificationRouter)
 
-
+const PORT = process.env.PORT || 8080
+connectDb().then(() => {
+    server.listen(PORT, () => {
+        console.log(`✅ Server started on port ${PORT}`)
+    })
+}).catch((err) => {
+    console.error('❌ Database connection failed:', err)
 })
 
 

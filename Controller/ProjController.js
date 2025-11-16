@@ -2,6 +2,7 @@ const updateProjectProgress = require("../helper/projrectprogresshelper");
 const Project = require("../Modal/ProjectModal");
 const Task = require("../Modal/TaskModal");
 const mongoose = require("mongoose");
+const { notifyUser } = require('../helper/notifyUser');
 
 
 const fetchProjectReportById = async (req, res) => {
@@ -364,10 +365,47 @@ const updateProjectDetailsById = async (req, res) => {
       return res.status(404).json({ FailureMessage: "No project found" });
     }
 await updateProjectProgress(project._id)
-    res.status(200).json({
-      SuccessMessage: "Project details updated successfully",
-      project,
-    });
+        // Notify project team about project detail updates
+        try {
+            const actorName = req.user && req.user.name ? req.user.name : 'A user';
+            const populatedProject = await Project.findById(project._id).populate({ path: 'team.user', select: 'name email' }).populate('createdBy', 'name email');
+            const notifyList = [];
+            if (populatedProject && populatedProject.team && populatedProject.team.length > 0) {
+                populatedProject.team.forEach(member => {
+                    if (member && member.user && member.user._id) {
+                        notifyList.push(notifyUser({
+                            type: 'project-updated',
+                            message: `Project '${populatedProject.name}' was updated by ${actorName}.`,
+                            recipientId: member.user._id,
+                            project: populatedProject._id,
+                            title: 'Project Updated',
+                            link: `/dashboard/project/${populatedProject._id}`,
+                            emailLink: `${process.env.FRONTEND_URL}/dashboard/project/${populatedProject._id}`
+                        }));
+                    }
+                });
+            }
+            // also notify project owner if exists and not already included
+            if (populatedProject && populatedProject.createdBy && populatedProject.createdBy._id) {
+                notifyList.push(notifyUser({
+                    type: 'project-updated',
+                    message: `Project '${populatedProject.name}' was updated by ${actorName}.`,
+                    recipientId: populatedProject.createdBy._id,
+                    project: populatedProject._id,
+                    title: 'Project Updated',
+                    link: `/dashboard/project/${populatedProject._id}`,
+                    emailLink: `${process.env.FRONTEND_URL}/dashboard/project/${populatedProject._id}`
+                }));
+            }
+            await Promise.all(notifyList);
+        } catch (notifyErr) {
+            console.error('Notify error (updateProjectDetailsById):', notifyErr);
+        }
+
+        res.status(200).json({
+            SuccessMessage: "Project details updated successfully",
+            project,
+        });
 
   } catch (error) {
     console.error("Update Project Error:", error.message, error.stack);
@@ -375,22 +413,59 @@ await updateProjectProgress(project._id)
   }
 };
 
-const deleteProjectById=async(req,res)=>{
+const deleteProjectById = async (req, res) => {
     try {
-        const projectId=req.params.id;
-        const managerId=req.params.id
-         const project=await  Project.findOne({_id:projectId,createdBy:managerId});
-           if(!project){
-            return res.status(400).json({FailureMessage:"no project found"})
-        }
-        const deletedproject=await Project.deleteOne({_id:project._id,createdBy:project.createdBy})
-       return res.status(200).json({SuccessMessage:'Project Deleted Successfully'})
+        const projectId = req.params.id;
+        const managerId = req.user && req.user._id;
 
+        const project = await Project.findOne({ _id: projectId, createdBy: managerId }).populate({ path: 'team.user', select: 'name email' }).populate('createdBy', 'name email');
+        if (!project) {
+            return res.status(400).json({ FailureMessage: "no project found" });
+        }
+
+        await Project.deleteOne({ _id: project._id, createdBy: project.createdBy });
+
+        // Notify team about deletion
+        try {
+            const actorName = req.user && req.user.name ? req.user.name : 'A manager';
+            const notifyList = [];
+            if (project.team && project.team.length > 0) {
+                project.team.forEach(member => {
+                    if (member && member.user && member.user._id) {
+                        notifyList.push(notifyUser({
+                            type: 'project-deleted',
+                            message: `Project '${project.name}' was deleted by ${actorName}.`,
+                            recipientId: member.user._id,
+                            project: project._id,
+                            title: 'Project Deleted',
+                            link: `/dashboard/projects`,
+                            emailLink: `${process.env.FRONTEND_URL}/dashboard/projects`
+                        }));
+                    }
+                });
+            }
+            // notify owner if exists
+            if (project.createdBy && project.createdBy._id) {
+                notifyList.push(notifyUser({
+                    type: 'project-deleted',
+                    message: `Project '${project.name}' was deleted by ${actorName}.`,
+                    recipientId: project.createdBy._id,
+                    project: project._id,
+                    title: 'Project Deleted',
+                    link: `/dashboard/projects`,
+                    emailLink: `${process.env.FRONTEND_URL}/dashboard/projects`
+                }));
+            }
+            await Promise.all(notifyList);
+        } catch (notifyErr) {
+            console.error('Notify error (deleteProjectById):', notifyErr);
+        }
+
+        return res.status(200).json({ SuccessMessage: 'Project Deleted Successfully' });
     } catch (error) {
-      return  res.status(500).json({FailureMessage:"Internal Server error"})
-        
+        return res.status(500).json({ FailureMessage: "Internal Server error" });
     }
-}
+};
 // Upload files by projectId
 const uploadfilesByProjectId = async (req, res) => {
   try {

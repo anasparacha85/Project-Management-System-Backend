@@ -1,7 +1,7 @@
 const nodemailer=require('nodemailer')
 require('dotenv').config()
 
-const transporter = nodemailer.createTransport({
+const transport = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587, // use 587 instead of 465 to avoid blocked port issues
   secure: false, // false for port 587 (TLS)
@@ -12,4 +12,4 @@ const transporter = nodemailer.createTransport({
   requireTLS: true,
 });
 
-module.exports= transporter;
+module.exports= transport;

@@ -3,7 +3,7 @@ const NotificationRouter = express.Router();
 const { getUserNotifications, markAsRead } = require("../Controller/NotificationController");
 const requireAuth = require("../Middleware/requireAuth");
 
-NotificationRouter.route("/:userId").get(requireAuth,getUserNotifications);
-NotificationRouter.route("/:notifId/read").put(requireAuth, markAsRead);
+NotificationRouter.route("/get-notification").get(requireAuth,getUserNotifications);
+NotificationRouter.route("/mark-as-read/:notifId").patch(requireAuth, markAsRead);
 
 module.exports = NotificationRouter;
