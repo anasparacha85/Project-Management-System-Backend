@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "echo 'No build step required'",
+    "build": "esbuild index.js --bundle --platform=node --minify --outfile=dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js"
   },
@@ -30,5 +30,8 @@
     "nodemon": "^3.1.10",
     "serverless-http": "^4.0.0",
     "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0"
   }
 }
