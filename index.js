@@ -13,6 +13,7 @@ const CommentsRouter = require('./Route/CommentsRoute')
 const { initSocket } = require('./socket/socket')
 const http = require('http');
 const NotificationRouter = require('./Route/NotificationRoute')
+const LeaveRouter = require('./Route/LeaveRoute')
 
 
 require('dotenv').config()
@@ -44,6 +45,7 @@ app.use('/api/employee', EmployeeRouter)
 app.use('/api/ai', AiRouter)
 app.use('/api/comments', CommentsRouter)
 app.use('/api/notifications', NotificationRouter)
+app.use('/api/leavemanagement',LeaveRouter )
 
 const PORT = process.env.PORT || 8080
 connectDb().then(() => {

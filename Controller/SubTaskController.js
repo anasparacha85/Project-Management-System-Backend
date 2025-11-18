@@ -8,7 +8,12 @@ const { notifyUser } = require('../helper/notifyUser');
 const TimeLog = require('../Modal/Timelog.js');
 const handleSubtaskTimeLogStatusChange = require('../helper/SubTaskChangeProgressHelper.js');
 
+// UPDATE: Only the status update functions
 
+// ... existing imports ...
+const { createTimeLogEntry, endTimeLogEntry, isEmployeeOnLeave } = require('../helper/timeLogHelper');
+
+// ... existing code ...
 // ----------- Create SubTask API -----------
 const CreateSubTask = async (req, res) => {
   try {
@@ -637,6 +642,11 @@ const deleteSubTaskById = async (req, res) => {
 
   }
 }
+
+
+// ============================================
+// 🔹 UPDATE: updateEmployeeSubTaskStatusById
+// ============================================
 const updateEmployeeSubTaskStatusById = async (req, res) => {
   try {
     let { Id, status } = req.body;
@@ -667,83 +677,85 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
     }
 
     // =====================
-    // 🔹 TimeLog Logic
+    // 🔹 NEW: TimeLog Logic with Office Hours
     // =====================
-    if(status==="todo"){
-       const latTimeLog=await TimeLog.find({
-        subTask:subtask._id,
-        user:userId
-      })
-      // res.status(200).json(latestTimeLog)
-  
-      const latestTimeLog=latTimeLog[latTimeLog.length-1]
-      console.log(latestTimeLog);
-      if(latestTimeLog.action=='paused'){
-        return res.status(400).json({FailureMessage:"please finish the break first"})
-      }
-      
+    
+    // Check if employee is on leave
+    const onLeave = await isEmployeeOnLeave(userId, new Date());
+    if (onLeave) {
+      return res.status(400).json({
+        FailureMessage: "You are on approved leave and cannot log time"
+      });
     }
+
+    if (status === "todo") {
+      const latTimeLog = await TimeLog.find({
+        subTask: subtask._id,
+        user: userId
+      });
+
+      const latestTimeLog = latTimeLog[latTimeLog.length - 1];
+      if (latestTimeLog && latestTimeLog.action == 'paused') {
+        return res.status(400).json({ FailureMessage: "Please finish the break first" });
+      }
+    }
+
     if (status === "in-progress") {
-      // Check if already running timelog
-      const existingLog = await TimeLog.findOne({
+      try {
+        const existingLog = await TimeLog.findOne({
+          subTask: subtask._id,
+          user: userId,
+          endTime: null
+        });
+
+        if (!existingLog) {
+          await createTimeLogEntry(
+            subtask.task.project,
+            subtask.task._id,
+            subtask._id,
+            userId,
+            new Date(),
+            'started'
+          );
+
+          subtask.timeLogs.push(newLog._id);
+          await subtask.save();
+        }
+      } catch (timeLogError) {
+        return res.status(400).json({
+          FailureMessage: timeLogError.message
+        });
+      }
+    }
+
+    if (status === "review") {
+      const latTimeLog = await TimeLog.find({
+        subTask: subtask._id,
+        user: userId
+      });
+
+      const latestTimeLog = latTimeLog[latTimeLog.length - 1];
+      if (latestTimeLog && latestTimeLog.action == 'paused') {
+        return res.status(400).json({ FailureMessage: "Please finish the break first" });
+      }
+
+      const openLog = await TimeLog.findOne({
         subTask: subtask._id,
         user: userId,
         endTime: null
       });
 
-      if (!existingLog) {
-        const newLog = await TimeLog.create({
-          project: subtask.task.project,   // parent project id
-          task: subtask.task._id,
-          subTask: subtask._id,
-          user: userId,
-          startTime: new Date(),
-          action: "started"
-        });
-
-        subtask.timeLogs.push(newLog._id);
-        await subtask.save();
-      }
-    }
-
-
-    if (status === "review") {
-      const latTimeLog=await TimeLog.find({
-        subTask:subtask._id,
-        user:userId
-      })
-      // res.status(200).json(latestTimeLog)
-  
-      const latestTimeLog=latTimeLog[latTimeLog.length-1]
-      console.log(latestTimeLog);
-      if(latestTimeLog.action=='paused'){
-        return res.status(400).json({FailureMessage:"please finish the break first"})
-      }
-      
-      // Close the open log
-      const openLog = await TimeLog.findOne({
-        subTask: subtask._id,
-        user: userId,
-        endTime: null,
-        
-      });
-    
       if (openLog) {
-        openLog.endTime = new Date();
-        openLog.duration = openLog.endTime - openLog.startTime; // ms
-        openLog.action = "completed";
-        await openLog.save();
+        try {
+          await endTimeLogEntry(openLog._id);
+        } catch (timeLogError) {
+          return res.status(400).json({
+            FailureMessage: timeLogError.message
+          });
+        }
       }
-      //  console.log("action==================================================================",openLog.action);
     }
-    // try {
-    //     await handleSubtaskTimeLogStatusChange(subtask, userId, status,res);
 
-    // } catch (error) {
-    //   return res.status(400).json({FailureMessage:error.message})
-      
-    // }
-  
     // =====================
     // 🔹 Update SubTask Status
     // =====================
@@ -754,7 +766,7 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
 
     await updateSubtaskProgress(subtask._id);
 
-    // Notify manager (task creator) about employee status change
+    // 🔔 Notify manager
     try {
       const actorName = req.user && req.user.name ? req.user.name : 'An employee';
       const updated = await SubTask.findById(Id).populate('task');
@@ -772,10 +784,12 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
         });
       }
     } catch (notifyErr) {
-      console.error('Notify error (updateEmployeeSubTaskStatusById):', notifyErr);
+      console.error('Notify error:', notifyErr);
     }
 
-    return res.status(200).json({ SuccessMessage: "Status updated + TimeLog updated" });
+    return res.status(200).json({
+      SuccessMessage: "Status updated + TimeLog updated (office hours only)"
+    });
 
   } catch (error) {
     console.error(error);
@@ -783,6 +797,7 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
   }
 };
 
+// ... rest of the code remains same ...
 
 const updateManagerSubTaskStatusById = async (req, res) => {
   try {

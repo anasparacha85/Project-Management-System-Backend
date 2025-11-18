@@ -20,6 +20,24 @@ const timeLogSchema = new mongoose.Schema({
   },
 
   notes: { type: String }, // optional notes for work session
+  // NEW: Track if time is within office hours
+  isWithinOfficeHours: {
+    type: Boolean,
+    default: true
+  },
+  
+  // NEW: Billable hours (only office hours counted)
+  billableHours: {
+    type: Number,
+    default: 0
+  },
+  
+  // NEW: Reference to leave if applicable
+  leave: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Leave',
+    default: null
+  }
 }, { timestamps: true });
 
 const TimeLog = mongoose.model("TimeLog", timeLogSchema);
