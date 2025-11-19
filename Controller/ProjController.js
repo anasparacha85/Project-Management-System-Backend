@@ -339,7 +339,6 @@ const updateProjectDetailsById = async (req, res) => {
   try {
     const managerId = req.user._id;
     const { name, description, budget, startDate, endDate, projectStatus, priority, projectId } = req.body;
-    console.log(projectId,"===========",name);
     
 
     if (!mongoose.Types.ObjectId.isValid(projectId)) {
@@ -513,4 +512,4 @@ const uploadfilesByProjectId = async (req, res) => {
 
 
 
-module.exports = { fetchProjectReportById,fetchFilesByProjectId,fetchProjectDetailsById ,updateProjectDetailsById,deleteProjectById,fetchMilestonesByProjectId,updateProjectDetailsById,uploadfilesByProjectId};
+module.exports = { fetchProjectReportById,fetchFilesByProjectId,fetchProjectDetailsById ,updateProjectDetailsById,deleteProjectById,fetchMilestonesByProjectId,uploadfilesByProjectId};

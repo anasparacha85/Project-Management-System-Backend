@@ -1,7 +1,7 @@
 
 const Leave = require('../Modal/LeaveModal');
 const TimeLog = require('../Modal/Timelog');
-const { isWithinOfficeHours, calculateBillableHours, getOfficeHours } = require('../config/officeHoursConfig');
+const { isWithinOfficeHours, calculateBillableHours, getOfficeHours } = require('../config/OfficeHoursConfig');
 
 /**
  * Check if employee is on leave on a specific date
