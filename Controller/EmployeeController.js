@@ -4,6 +4,7 @@ const SubTask = require("../Modal/SubTaskModal");
 const TimeLog = require("../Modal/Timelog");
 const mongoose = require("mongoose");
 const { User } = require("../Modal/User");
+const { createTimeLogEntry, endTimeLogEntry, calculateDurationInOfficeHours, validateTimeLogEntry } = require('../helper/timeLogHelper');
 
 const getProjectEmployeeReport = async (req, res) => {
   try {
@@ -35,20 +36,22 @@ const getProjectEmployeeReport = async (req, res) => {
       "name email avatarUrl"
     );
 
-    // 🔵 TimeLogs
+    // 🔵 TimeLogs (duration is stored in milliseconds)
     const logs = await TimeLog.aggregate([
       { $match: { project: new mongoose.Types.ObjectId(projectId) } },
       {
         $group: {
           _id: "$user",
-          totalMinutes: { $sum: "$duration" },
+          totalMs: { $sum: "$duration" },
         },
       },
     ]);
 
     const logMap = {};
     logs.forEach((l) => {
-      logMap[l._id.toString()] = l.totalMinutes;
+      // convert ms -> minutes for reporting
+      const minutes = l.totalMs ? Math.round(l.totalMs / (1000 * 60)) : 0;
+      logMap[l._id.toString()] = minutes;
     });
 
     // 🟣 Build Report
@@ -352,9 +355,18 @@ const pauseTimeLog = async (req, res) => {
       return res.status(404).json({ FailureMessage: "No active timelog found" });
     }
 
-    // set endTime for this session
-    activeLog.endTime = new Date();
-    activeLog.duration += activeLog.endTime - activeLog.startTime;
+    const endTime = new Date();
+    // validate using office-hours rules
+    const validation = await validateTimeLogEntry(activeLog.startTime, endTime, userId);
+    if (!validation.valid) {
+      return res.status(400).json({ FailureMessage: validation.message });
+    }
+
+    // calculate billable duration only within office hours
+    const durationAdd = calculateDurationInOfficeHours(activeLog.startTime, endTime);
+
+    activeLog.endTime = endTime;
+    activeLog.duration = (activeLog.duration || 0) + durationAdd;
     activeLog.action = "paused";
     await activeLog.save();
 
@@ -368,19 +380,21 @@ const resumeTimeLog = async (req, res) => {
   try {
     const { subTaskId } = req.body;
     const userId = req.user._id;
-    const subtask=await SubTask.findOne({_id:subTaskId}).populate('task')
-    console.log(subtask);
-  
-   
-    // Create a new session instead of reopening the old one
-    const newLog = await TimeLog.create({
-      subTask: subTaskId,
-      user: userId,
-     task:subtask.task._id,
-      project:subtask.task.project,
-      startTime: new Date(),
-      action: "resumed"
-    });
+    const subtask = await SubTask.findOne({ _id: subTaskId }).populate('task');
+
+    if (!subtask) {
+      return res.status(404).json({ FailureMessage: 'SubTask not found' });
+    }
+
+    // Create a new session using the office-hours-aware helper
+    const newLog = await createTimeLogEntry(
+      subtask.task.project,
+      subtask.task._id,
+      subTaskId,
+      userId,
+      new Date(),
+      'resumed'
+    );
 
     // push to subtask timelog array
     await SubTask.updateOne(

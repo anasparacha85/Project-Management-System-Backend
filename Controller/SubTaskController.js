@@ -11,7 +11,7 @@ const handleSubtaskTimeLogStatusChange = require('../helper/SubTaskChangeProgres
 // UPDATE: Only the status update functions
 
 // ... existing imports ...
-const { createTimeLogEntry, endTimeLogEntry, isEmployeeOnLeave } = require('../helper/timeLogHelper');
+const { createTimeLogEntry, endTimeLogEntry, isEmployeeOnLeave, validateTimeLogEntry } = require('../helper/timeLogHelper');
 
 // ... existing code ...
 // ----------- Create SubTask API -----------
@@ -267,7 +267,7 @@ const updateManagerSubTaskByID = async (req, res) => {
       }
 
       // ===========================
-      // 🔹 TIMELOG LOGIC (copied & integrated)
+      // 🔹 TIMELOG LOGIC (using office hours helper)
       // ===========================
       if (updates.status === "in-progress") {
         for (let assignee of existingSubTask.assignees) {
@@ -278,16 +278,19 @@ const updateManagerSubTaskByID = async (req, res) => {
           });
 
           if (!existingLog) {
-            const newLog = await TimeLog.create({
-              project: existingSubTask.task.project, // parent project id
-              task: existingSubTask.task._id, // parent task id
-              subTask: existingSubTask._id,
-              user: assignee.user,
-              startTime: new Date(),
-              action: "started",
-            });
-
-            existingSubTask.timeLogs.push(newLog._id);
+            try {
+              const newLog = await createTimeLogEntry(
+                existingSubTask.task.project,
+                existingSubTask.task._id,
+                existingSubTask._id,
+                assignee.user,
+                new Date(),
+                'started'
+              );
+              existingSubTask.timeLogs.push(newLog._id);
+            } catch (err) {
+              console.error('TimeLog creation error for assignee:', err);
+            }
           }
         }
         await existingSubTask.save();
@@ -302,10 +305,11 @@ const updateManagerSubTaskByID = async (req, res) => {
           });
 
           if (openLog) {
-            openLog.endTime = new Date();
-            openLog.duration = openLog.endTime - openLog.startTime;
-            openLog.action = "completed";
-            await openLog.save();
+            try {
+              await endTimeLogEntry(openLog._id);
+            } catch (err) {
+              console.error('TimeLog end error for assignee:', err);
+            }
           }
         }
       }
@@ -412,174 +416,193 @@ const updateEmployeeSubTaskByID = async (req, res) => {
       return res.status(404).json({ FailureMessage: "Task not found" });
     }
 
-    // ============= STATUS LOGIC =============
+    // ========================================================
+    // 🔥 STATUS LOGIC — EXACTLY SAME AS updateEmployeeSubTaskStatusById
+    // ========================================================
     if (updates.status && updates.status !== existingSubTask.status) {
-      const taskWithDeps = await SubTask.findById(id).populate("dependencies", "status");
+      let status = updates.status;
 
+      // ❌ Employee cannot mark Completed
+      if (status === "completed") {
+        return res.status(403).json({
+          FailureMessage: "Employees cannot mark tasks as Completed directly."
+        });
+      }
+
+      // Allowed statuses only
       const allowedForEmployee = ["todo", "in-progress", "ready-for-review"];
-      if (!allowedForEmployee.includes(updates.status)) {
-        return res.status(403).json({ FailureMessage: "Invalid status transition for employee." });
+      if (!allowedForEmployee.includes(status)) {
+        return res.status(403).json({
+          FailureMessage: "Invalid status transition for employee."
+        });
       }
 
-      if (updates.status.toLowerCase() === "ready-for-review") {
-        updates.status = "review";
+      // Convert “ready-for-review”
+      if (status.toLowerCase() === "ready-for-review") {
+        status = "review";
       }
 
-      if (!taskWithDeps) {
-        return res.status(404).json({ FailureMessage: "Sub Task not found" });
-      }
-
-      const incompleteDeps = taskWithDeps.dependencies.filter(
-        (dep) => dep.status !== "completed"
+      // Office hour validation
+      const officeHoursValidation = await validateTimeLogEntry(
+        new Date(),
+        new Date(),
+        userId
       );
 
-      if (incompleteDeps.length > 0) {
+      if (!officeHoursValidation.valid) {
         return res.status(400).json({
-          FailureMessage: "Cannot update status until all dependencies are completed",
-          incompleteDependencies: incompleteDeps.map((d) => ({
-            id: d._id,
-            title: d.title,
-            status: d.status,
-          })),
+          FailureMessage: officeHoursValidation.message
         });
       }
 
-      // ===========================
-      // 🔹 TimeLog Logic (added)
-      // ===========================
-       if(updates.status==="todo"){
-       const latTimeLog=await TimeLog.find({
-        subTask:existingSubTask._id,
-        user:userId
-      })
-      // res.status(200).json(latestTimeLog)
-  
-      const latestTimeLog=latTimeLog[latTimeLog.length-1]
-      console.log(latestTimeLog);
-      if(latestTimeLog.action=='paused'){
-        return res.status(400).json({FailureMessage:"please finish the break first"})
-      }
-      
-    }
-      if (updates.status === "in-progress") {
-        // Start a new time log if none is running
-        const existingLog = await TimeLog.findOne({
-          subTask: existingSubTask._id,
-          user: userId,
-          endTime: null,
+      // Check employee leave
+      const onLeave = await isEmployeeOnLeave(userId, new Date());
+      if (onLeave) {
+        return res.status(400).json({
+          FailureMessage: "You are on approved leave and cannot log time"
         });
+      }
 
-        if (!existingLog) {
-          const newLog = await TimeLog.create({
-            project: existingSubTask.task.project,
-            task: existingSubTask.task._id,
-            subTask: existingSubTask._id,
-            user: userId,
-            startTime: new Date(),
-            action: "started",
+      // --- Status: TODO ---
+      if (status === "todo") {
+        const logs = await TimeLog.find({ subTask: existingSubTask._id, user: userId });
+        const latest = logs[logs.length - 1];
+        if (latest && latest.action === "paused") {
+          return res.status(400).json({
+            FailureMessage: "Please finish the break first"
           });
-
-          existingSubTask.timeLogs.push(newLog._id);
-          await existingSubTask.save();
         }
       }
 
-      if (updates.status === "review") {
-        const userLogs = await TimeLog.find({
+      // --- Status: IN PROGRESS ---
+      if (status === "in-progress") {
+        const openLog = await TimeLog.findOne({
           subTask: existingSubTask._id,
           user: userId,
+          endTime: null
         });
+        console.log(openLog,"======================");
+        
 
-        const latestLog = userLogs[userLogs.length - 1];
+        if (!openLog) {
+          try {
+            const newLog = await createTimeLogEntry(
+              existingSubTask.task.project,
+              existingSubTask.task._id,
+              existingSubTask._id,
+              userId,
+              new Date(),
+              "started"
+            );
+            console.log("new log of subtask",newLog);
+            
 
-        if (latestLog && latestLog.action === "paused") {
-          return res.status(400).json({
-            FailureMessage: "Please finish the break first",
-          });
+           await SubTask.updateOne(
+  { _id: existingSubTask._id },
+  { $push: { timeLogs: newLog._id } }
+);
+
+          } catch (err) {
+            return res.status(400).json({ FailureMessage: err.message });
+          }
+        }
+      }
+
+      // --- Status: REVIEW ---
+      if (status === "review") {
+        const logs = await TimeLog.find({ subTask: existingSubTask._id, user: userId });
+        const latest = logs[logs.length - 1];
+        if (latest && latest.action === "paused") {
+          return res.status(400).json({ FailureMessage: "Please finish the break first" });
         }
 
         const openLog = await TimeLog.findOne({
           subTask: existingSubTask._id,
           user: userId,
-          endTime: null,
+          endTime: null
         });
 
         if (openLog) {
-          openLog.endTime = new Date();
-          openLog.duration = openLog.endTime - openLog.startTime;
-          openLog.action = "completed";
-          await openLog.save();
+          try {
+            await endTimeLogEntry(openLog._id);
+          } catch (err) {
+            return res.status(400).json({ FailureMessage: err.message });
+          }
         }
       }
+
+      // Apply final status after validation
+      updates.status = status;
     }
 
-    // ✅ Date validation (unchanged)
+    // ========================================================
+    // 🔥 DATE VALIDATION — (Your old logic preserved)
+    // ========================================================
     if (updates.startDate || updates.dueDate) {
-      const updatedSubTaskstartDate = updates.startDate ? new Date(updates.startDate) : null;
-      const updatedSubTaskDueDate = updates.dueDate ? new Date(updates.dueDate) : null;
+      const updatedStart = updates.startDate ? new Date(updates.startDate) : null;
+      const updatedDue = updates.dueDate ? new Date(updates.dueDate) : null;
 
-      const taskStartDate = new Date(task.startDate);
-      const taskEndDate = new Date(task.dueDate);
+      const taskStart = new Date(task.startDate);
 
-      if (updatedSubTaskstartDate && updatedSubTaskDueDate && updatedSubTaskDueDate < updatedSubTaskstartDate) {
-        return res.status(400).json({ FailureMessage: "You cannot set the due date before the start date" });
+      if (updatedStart && updatedDue && updatedDue < updatedStart) {
+        return res.status(400).json({ FailureMessage: "Due date cannot be before start date" });
       }
 
-      if (updatedSubTaskstartDate && updatedSubTaskstartDate < taskStartDate) {
-        return res.status(400).json({ FailureMessage: "Task start date cannot be before the project start date" });
+      if (updatedStart && updatedStart < taskStart) {
+        return res.status(400).json({ FailureMessage: "Start date cannot be before task start" });
       }
 
-      if (updatedSubTaskDueDate && updatedSubTaskDueDate < taskStartDate) {
-        return res.status(400).json({ FailureMessage: "Task due date cannot be before the project start date" });
+      if (updatedDue && updatedDue < taskStart) {
+        return res.status(400).json({ FailureMessage: "Due date cannot be before task start" });
       }
-
-      // if (updatedSubTaskstartDate && updatedSubTaskstartDate > taskEndDate) {
-      //   return res.status(400).json({ FailureMessage: "Task start date cannot be after the project end date" });
-      // }
     }
 
-    // ===========================
-    // 🔹 Update SubTask
-    // ===========================
-    const subtask = await SubTask.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("assignees.user", "name email")
-      .populate("createdBy", "name email");
+    // ========================================================
+    // 🔥 UPDATE SUBTASK
+    // ========================================================
+   const subtask = await SubTask.findByIdAndUpdate(
+  id,
+  { $set: updates },
+  { new: true, runValidators: true }
+).populate("assignees.user", "name email").populate("createdBy", "name email");
 
     await updateSubtaskProgress(subtask._id);
 
-    // Notify manager (task creator) about employee update
+    // ========================================================
+    // 🔔 Notify manager
+    // ========================================================
     try {
-      const actorName = req.user && req.user.name ? req.user.name : 'An employee';
-      const updatedSubtask = await SubTask.findById(id).populate('assignees.user').populate('createdBy');
-      const parentTask = await Task.findById(updatedSubtask.task).populate('createdBy');
-      if (parentTask && parentTask.createdBy && parentTask.createdBy._id) {
+      const actor = req.user?.name || "An employee";
+      const updated = await SubTask.findById(id).populate("task");
+      const parentTask = await Task.findById(updated.task).populate("createdBy");
+
+      if (parentTask?.createdBy?._id) {
         await notifyUser({
-          type: 'subtask-status-updated',
-          message: `Subtask '${updatedSubtask.title}' status was updated by ${actorName}.`,
+          type: "subtask-status-updated",
+          message: `Subtask '${updated.title}' was updated by ${actor}.`,
           recipientId: parentTask.createdBy._id,
           project: parentTask.project,
-          subTask: updatedSubtask._id,
-          title: 'SubTask Status Updated',
-          link: `/dashboard/subtask/${updatedSubtask._id}`,
-          emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${updatedSubtask._id}`,
+          subTask: updated._id,
+          title: "Subtask Updated",
+          link: `/dashboard/subtask/${updated._id}`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/subtask/${updated._id}`,
         });
       }
-    } catch (notifyErr) {
-      console.error('Notify error (updateEmployeeSubTaskByID):', notifyErr);
+    } catch (err) {
+      console.error("Notify error:", err);
     }
 
     return res.status(200).json({
-      SuccessMessage: "task updated successfully ",
+      SuccessMessage: "Subtask updated successfully",
       subtask,
     });
+
   } catch (error) {
     console.error(error);
-    res.status(500).json({ FailureMessage: "Internal server error" });
+    return res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
 
 //delete sub task
 const deleteSubTaskById = async (req, res) => {
@@ -651,7 +674,8 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
   try {
     let { Id, status } = req.body;
     const userId = req.user._id;
-
+    console.log("hii siisi");
+    
     if (!mongoose.Types.ObjectId.isValid(Id)) {
       return res.status(400).json({ FailureMessage: "Not a valid id" });
     }
@@ -677,9 +701,20 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
     }
 
     // =====================
+    // 🔹 GLOBAL: Check Office Hours for ANY status update
+    // =====================
+    const officeHoursValidation = await validateTimeLogEntry(new Date(), new Date(), userId);
+    if (!officeHoursValidation.valid) {
+      return res.status(400).json({
+        FailureMessage: officeHoursValidation.message
+      });
+    }
+
+    // =====================
     // 🔹 NEW: TimeLog Logic with Office Hours
     // =====================
     
+      
     // Check if employee is on leave
     const onLeave = await isEmployeeOnLeave(userId, new Date());
     if (onLeave) {
@@ -707,9 +742,10 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
           user: userId,
           endTime: null
         });
+        console.log("existingLog of subtask status",existingLog);
 
         if (!existingLog) {
-          await createTimeLogEntry(
+          const newLog = await createTimeLogEntry(
             subtask.task.project,
             subtask.task._id,
             subtask._id,
@@ -717,6 +753,8 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
             new Date(),
             'started'
           );
+          console.log("newlog",newLog);
+          
 
           subtask.timeLogs.push(newLog._id);
           await subtask.save();
@@ -822,7 +860,7 @@ const updateManagerSubTaskStatusById = async (req, res) => {
     }
 
     // =====================
-    // 🔹 Timelog Logic
+    // 🔹 Timelog Logic (using office hours helper)
     // =====================
     if (status === "in-progress") {
       for (let assignee of subtask.assignees) {
@@ -834,16 +872,20 @@ const updateManagerSubTaskStatusById = async (req, res) => {
         });
 
         if (!existingLog) {
-          const newLog = await TimeLog.create({
-            project: subtask.task.project,   // parent project id
-            task: subtask.task._id,          // parent task id
-            subTask: subtask._id,
-            user: assignee.user,
-            startTime: new Date(),
-            action: "started"
-          });
-
-          subtask.timeLogs.push(newLog._id);
+          try {
+            const newLog = await createTimeLogEntry(
+              subtask.task.project,
+              subtask.task._id,
+              subtask._id,
+              assignee.user,
+              new Date(),
+              'started'
+            );
+            log("newlog of subtask status",newLog);
+            subtask.timeLogs.push(newLog._id);
+          } catch (err) {
+            console.error('TimeLog creation error for assignee:', err);
+          }
         }
       }
       await subtask.save();
@@ -859,10 +901,11 @@ const updateManagerSubTaskStatusById = async (req, res) => {
         });
 
         if (log) {
-          log.endTime = new Date();
-          log.duration = log.endTime - log.startTime;
-          log.action = "completed";
-          await log.save();
+          try {
+            await endTimeLogEntry(log._id);
+          } catch (err) {
+            console.error('TimeLog end error for assignee:', err);
+          }
         }
       }
     }
