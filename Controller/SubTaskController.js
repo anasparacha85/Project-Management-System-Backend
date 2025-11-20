@@ -11,7 +11,7 @@ const handleSubtaskTimeLogStatusChange = require('../helper/SubTaskChangeProgres
 // UPDATE: Only the status update functions
 
 // ... existing imports ...
-const { createTimeLogEntry, endTimeLogEntry, isEmployeeOnLeave, validateTimeLogEntry } = require('../helper/timeLogHelper');
+const { createTimeLogEntry, endTimeLogEntry, isEmployeeOnLeave, validateTimeLogEntry } = require('../helper/TimeLogHelper');
 
 // ... existing code ...
 // ----------- Create SubTask API -----------

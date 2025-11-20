@@ -4,7 +4,7 @@ const SubTask = require("../Modal/SubTaskModal");
 const TimeLog = require("../Modal/Timelog");
 const mongoose = require("mongoose");
 const { User } = require("../Modal/User");
-const { createTimeLogEntry, endTimeLogEntry, calculateDurationInOfficeHours, validateTimeLogEntry } = require('../helper/timeLogHelper');
+const { createTimeLogEntry, endTimeLogEntry, calculateDurationInOfficeHours, validateTimeLogEntry } = require('../helper/TimeLogHelper');
 
 const getProjectEmployeeReport = async (req, res) => {
   try {
