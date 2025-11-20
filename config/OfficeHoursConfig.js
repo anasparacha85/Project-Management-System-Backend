@@ -7,7 +7,7 @@ const officeHoursConfig = {
   // Default office hours (will be configurable later per company)
   default: {
     startHour: 9,      // 9 AM
-    endHour: 21,       // 6 PM
+    endHour: 24,       // 6 PM
     startMinute: 0,
     endMinute: 0,
     workingDays: [1, 2, 3, 4, 5], // Monday to Friday (0 = Sunday)
