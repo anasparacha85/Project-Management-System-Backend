@@ -45,7 +45,7 @@ app.use('/api/employee', EmployeeRouter)
 app.use('/api/ai', AiRouter)
 app.use('/api/comments', CommentsRouter)
 app.use('/api/notifications', NotificationRouter)
-app.use('/api/leavemanagement',LeaveRouter )
+app.use('/api/leave-management',LeaveRouter )
 
 const PORT = process.env.PORT || 8080
 connectDb().then(() => {

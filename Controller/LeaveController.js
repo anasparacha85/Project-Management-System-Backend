@@ -1,14 +1,15 @@
 const Leave = require('../Modal/LeaveModal');
-const User = require('../Modal/User');
+const { User } = require('../Modal/User');
 const { notifyUser } = require('../helper/notifyUser');
 const mongoose = require('mongoose');
 
 // ============================================
 // 📝 EMPLOYEE: Request Leave
+
 // ============================================
 const requestLeave = async (req, res) => {
   try {
-    const { leaveType, startDate, endDate, reason, attachments } = req.body;
+    const { leaveType, startDate, endDate, reason, attachments,managerId } = req.body;
     const employeeId = req.user._id;
 
     // ✅ Validation
@@ -55,6 +56,7 @@ const requestLeave = async (req, res) => {
     const newLeave = new Leave({
       employee: employeeId,
       leaveType,
+      manager:managerId,
       startDate: start,
       endDate: end,
       numberOfDays,
@@ -68,20 +70,29 @@ const requestLeave = async (req, res) => {
     // 🔔 Notify manager
     try {
       const employee = await User.findById(employeeId);
-      const managers = await User.find({ role: 'manager' });
 
-      await Promise.all(
-        managers.map(manager =>
-          notifyUser({
-            type: 'leave-requested',
-            message: `${employee.name} has requested a leave from ${start.toDateString()} to ${end.toDateString()} (${numberOfDays} days)`,
-            recipientId: manager._id,
-            title: 'New Leave Request',
-            link: `/dashboard/leave-requests`,
-            emailLink: `${process.env.FRONTEND_URL}/dashboard/leave-requests`
-          })
-        )
-      );
+      // Resolve manager: prefer provided managerId, otherwise fall back to first manager user
+      let manager = null;
+      if (managerId) {
+        manager = await User.findById(managerId);
+      }
+      if (!manager) {
+        // fallback: attempt to find any manager in the system
+        manager = await User.findOne({ role: 'manager' });
+      }
+
+      if (manager && manager._id) {
+        await notifyUser({
+          type: 'leave-requested',
+          message: `${employee.name} has requested a leave from ${start.toDateString()} to ${end.toDateString()} (${numberOfDays} days)`,
+          recipientId: manager._id,
+          title: 'New Leave Request',
+          link: `/dashboard/leave-management`,
+          emailLink: `${process.env.FRONTEND_URL}/dashboard/leave-management`
+        });
+      } else {
+        console.warn('Leave created but no manager found to notify (no managerId provided and no manager user exists)');
+      }
     } catch (notifyErr) {
       console.error('Notify error (requestLeave):', notifyErr);
     }

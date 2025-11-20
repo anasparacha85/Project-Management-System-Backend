@@ -6,6 +6,11 @@ const leaveSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  manager:{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   leaveType: {
     type: String,
     enum: ['sick', 'casual', 'earned', 'unpaid', 'maternity', 'paternity'],
