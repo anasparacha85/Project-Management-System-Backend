@@ -192,11 +192,13 @@ const rejectLeave = async (req, res) => {
     }
 
     // ✅ Update leave
-    leave.status = 'rejected';
-    leave.approvedBy = managerId;
-    leave.approvalDate = new Date();
-    leave.rejectionReason = rejectionReason;
-    await leave.save();
+    await Leave.updateOne({_id: leaveId}, { $set: {
+      status: 'rejected',
+      approvedBy: managerId,
+      approvalDate: new Date(),
+      rejectionReason: rejectionReason
+    }});
+   
 
     // 🔔 Notify employee
     try {

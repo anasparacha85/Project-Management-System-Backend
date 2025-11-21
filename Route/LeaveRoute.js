@@ -33,7 +33,7 @@ LeaveRouter.route('/cancel/:leaveId').delete( requireAuth, cancelLeaveRequest);
 LeaveRouter.route('/approve/:leaveId').patch( requireAuth, approveLeave);
 
 // ❌ Reject a leave
-LeaveRouter.route('/reject/:leaveId').patch( requireAuth, rejectLeave);
+LeaveRouter.route('/reject/:leaveId').put( requireAuth, rejectLeave);
 
 // 📋 Get all leave requests
 LeaveRouter.route('/all-requests').get( requireAuth, getAllLeaveRequests);
