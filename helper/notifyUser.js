@@ -3,7 +3,7 @@ const { User } = require("../Modal/User");
 const { getIO } = require("../socket/socket");
 const sendEmail = require("../utils/sendMailutils");
 
-const notifyUser = async ({ type, message, recipientId, project, task, subTask, title, link, emailLink }) => {
+const notifyUser = async ({ type, message, recipientId, project, task, subTask, title, link, emailLink ,userImage}) => {
   try {
     // ✅ Create notification in DB
     const notification = await Notification.create({
@@ -28,7 +28,8 @@ const notifyUser = async ({ type, message, recipientId, project, task, subTask, 
         message,
         createdAt: notification.createdAt,
         isRead: notification.isRead,
-        link: notification.link
+        link: notification.link,
+        userImage
       });
     }
 
