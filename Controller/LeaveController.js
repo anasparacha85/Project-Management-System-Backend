@@ -263,8 +263,9 @@ const getAllLeaveRequests = async (req, res) => {
 
     if (status) filter.status = status;
     if (employeeId) filter.employee = employeeId;
+    
 
-    const leaves = await Leave.find(filter)
+    const leaves = await Leave.find(filter,{manager:req.user._id})
       .populate('employee', 'name email')
       .populate('approvedBy', 'name email')
       .sort({ createdAt: -1 });
@@ -290,7 +291,8 @@ const getTeamLeaveSummary = async (req, res) => {
       employees.map(async (emp) => {
         const approvedLeaves = await Leave.find({
           employee: emp._id,
-          status: 'approved'
+          status: 'approved',
+          manager:req.user._id
         });
 
         const totalLeaveDays = approvedLeaves.reduce((sum, leave) => sum + leave.numberOfDays, 0);
@@ -378,7 +380,21 @@ function calculateWorkingDays(startDate, endDate) {
 
   return count;
 }
-
+const getLeaveDetailsByEmployeeId=async(req,res)=>{
+  try {
+    const { employeeId } = req.params;
+    const leaves = await Leave.find({ employee: employeeId })
+      .populate('approvedBy', 'name email')
+      .sort({ createdAt: -1 });
+      if(leaves.length===0){
+        return res.status(404).json({ FailureMessage: 'No leave records found for this employee' });
+      }
+      return res.status(200).json({leaveHistory:leaves})
+  } catch (error) {
+    console.error('getLeaveDetailsByEmployeeId error:', error);
+    return res.status(500).json({ FailureMessage: 'Server Error' });
+  }
+}
 module.exports = {
   requestLeave,
   approveLeave,
@@ -386,5 +402,6 @@ module.exports = {
   getMyLeaves,
   getAllLeaveRequests,
   getTeamLeaveSummary,
-  cancelLeaveRequest
+  cancelLeaveRequest,
+  getLeaveDetailsByEmployeeId
 };
