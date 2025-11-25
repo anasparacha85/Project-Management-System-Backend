@@ -125,11 +125,11 @@ const approveLeave = async (req, res) => {
       return res.status(404).json({ FailureMessage: 'Leave request not found' });
     }
 
-    if (leave.status !== 'pending') {
-      return res.status(400).json({
-        FailureMessage: `Cannot approve a ${leave.status} leave request`
-      });
-    }
+    // if (leave.status !== 'pending') {
+    //   return res.status(400).json({
+    //     FailureMessage: `Cannot approve a ${leave.status} leave request`
+    //   });
+    // }
 
     // ✅ Update leave
     leave.status = 'approved';
@@ -145,8 +145,8 @@ const approveLeave = async (req, res) => {
         message: `Your leave request from ${leave.startDate.toDateString()} to ${leave.endDate.toDateString()} has been approved by ${manager.name}`,
         recipientId: leave.employee._id,
         title: 'Leave Approved',
-        link: `/dashboard/my-leaves`,
-        emailLink: `${process.env.FRONTEND_URL}/dashboard/my-leaves`
+        link: `/dashboard/leave-management/my-leaves`,
+        emailLink: `${process.env.FRONTEND_URL}/dashboard/leave-management/my-leaves`
       });
     } catch (notifyErr) {
       console.error('Notify error (approveLeave):', notifyErr);
@@ -185,11 +185,11 @@ const rejectLeave = async (req, res) => {
       return res.status(404).json({ FailureMessage: 'Leave request not found' });
     }
 
-    if (leave.status !== 'pending') {
-      return res.status(400).json({
-        FailureMessage: `Cannot reject a ${leave.status} leave request`
-      });
-    }
+    // if (leave.status !== 'pending') {
+    //   return res.status(400).json({
+    //     FailureMessage: `Cannot reject a ${leave.status} leave request`
+    //   });
+    // }
 
     // ✅ Update leave
     await Leave.updateOne({_id: leaveId}, { $set: {
@@ -259,13 +259,17 @@ const getAllLeaveRequests = async (req, res) => {
   try {
     const { status, employeeId } = req.query;
 
-    let filter = {};
+    const managerId = req.user._id;
+
+    let filter = {
+      manager: managerId   // ONLY fetch leaves of this manager
+    };
 
     if (status) filter.status = status;
     if (employeeId) filter.employee = employeeId;
     
 
-    const leaves = await Leave.find(filter,{manager:req.user._id})
+    const leaves = await Leave.find(filter)
       .populate('employee', 'name email')
       .populate('approvedBy', 'name email')
       .sort({ createdAt: -1 });
@@ -383,17 +387,36 @@ function calculateWorkingDays(startDate, endDate) {
 const getLeaveDetailsByEmployeeId=async(req,res)=>{
   try {
     const { employeeId } = req.params;
-    const leaves = await Leave.find({ employee: employeeId })
+    const leaves = await Leave.find({ employee: employeeId ,manager:req.user._id})
       .populate('approvedBy', 'name email')
       .populate('employee', 'name email')
+       .populate('manager', 'name email')
       .sort({ createdAt: -1 })
       console.log(leaves,"i am leave");
-      if(leaves.length===0){
-        return res.status(404).json({ FailureMessage: 'No leave records found for this employee' });
-      }
       return res.status(200).json({leaveHistory:leaves})
   } catch (error) {
     console.error('getLeaveDetailsByEmployeeId error:', error);
+    return res.status(500).json({ FailureMessage: 'Server Error' });
+  }
+}
+
+
+const getLeaveDetailsById=async(req,res)=>{
+  try {
+    const { leaveId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(leaveId)) {
+      return res.status(400).json({ FailureMessage: 'Invalid leave ID' });
+    }
+
+    const leave = await Leave.findById(leaveId)
+      .populate('approvedBy', 'name email')
+      .populate('employee', 'name email')
+       .populate('manager', 'name email')
+      .sort({ createdAt: -1 })
+      console.log(leave,"i am leave");
+      return res.status(200).json({leaveDetails:leave})
+  } catch (error) {
+    console.error('getLeaveDetailsById error:', error);
     return res.status(500).json({ FailureMessage: 'Server Error' });
   }
 }
@@ -405,5 +428,6 @@ module.exports = {
   getAllLeaveRequests,
   getTeamLeaveSummary,
   cancelLeaveRequest,
-  getLeaveDetailsByEmployeeId
+  getLeaveDetailsByEmployeeId,
+  getLeaveDetailsById
 };

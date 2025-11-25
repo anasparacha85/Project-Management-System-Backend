@@ -8,14 +8,45 @@ const { isWithinOfficeHours, calculateBillableHours, getOfficeHours } = require(
  */
 async function isEmployeeOnLeave(employeeId, date) {
   const checkDate = new Date(date);
-  checkDate.setHours(0, 0, 0, 0);
+  // Normalize check date to local day boundaries to avoid time component/timezone issues
+  const startOfDay = new Date(checkDate);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(checkDate);
+  endOfDay.setHours(23, 59, 59, 999);
 
+  // Find any approved leave that overlaps the entire day
   const leave = await Leave.findOne({
     employee: employeeId,
     status: 'approved',
-    startDate: { $lte: checkDate },
-    endDate: { $gte: checkDate }
+    startDate: { $lte: endOfDay },
+    endDate: { $gte: startOfDay }
   });
+  console.log(leave,"===leave===");
+
+  if (!leave) {
+    // Helpful debug info to diagnose why a matching leave wasn't found
+    // (this can be noisy in production; consider gating on an env var)
+    try {
+      console.debug('[isEmployeeOnLeave] No approved leave found for:', {
+        employeeId: String(employeeId),
+        checkDate: checkDate.toISOString(),
+        startOfDay: startOfDay.toISOString(),
+        endOfDay: endOfDay.toISOString()
+      });
+
+      // Also show any leave (regardless of status) that overlaps the day to help spot status mismatches
+      const anyLeave = await Leave.findOne({
+        employee: employeeId,
+        startDate: { $lte: endOfDay },
+        endDate: { $gte: startOfDay }
+      });
+      if (anyLeave) {
+        console.debug('[isEmployeeOnLeave] Found overlapping leave but status is', anyLeave.status, 'leaveId=', anyLeave._id);
+      }
+    } catch (dbgErr) {
+      console.debug('[isEmployeeOnLeave] debug query error', dbgErr);
+    }
+  }
 
   return !!leave;
 }

@@ -7,7 +7,8 @@ const {
   getAllLeaveRequests,
   getTeamLeaveSummary,
   cancelLeaveRequest,
-  getLeaveDetailsByEmployeeId
+  getLeaveDetailsByEmployeeId,
+  getLeaveDetailsById
 } = require('../Controller/LeaveController');
 const requireAuth = require('../Middleware/requireAuth');
 
@@ -42,5 +43,6 @@ LeaveRouter.route('/all-requests').get( requireAuth, getAllLeaveRequests);
 // 📊 Get team leave summary
 LeaveRouter.route('/team-summary').get( requireAuth, getTeamLeaveSummary);
 LeaveRouter.route('/employee-leaves/:employeeId').get(requireAuth, getLeaveDetailsByEmployeeId);
+LeaveRouter.route('/leave-details/:leaveId').get(requireAuth, getLeaveDetailsById);
 
 module.exports = LeaveRouter;
