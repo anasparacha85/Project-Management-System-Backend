@@ -385,7 +385,9 @@ const getLeaveDetailsByEmployeeId=async(req,res)=>{
     const { employeeId } = req.params;
     const leaves = await Leave.find({ employee: employeeId })
       .populate('approvedBy', 'name email')
-      .sort({ createdAt: -1 });
+      .populate('employee', 'name email')
+      .sort({ createdAt: -1 })
+      console.log(leaves,"i am leave");
       if(leaves.length===0){
         return res.status(404).json({ FailureMessage: 'No leave records found for this employee' });
       }
