@@ -44,5 +44,5 @@ LeaveRouter.route('/all-requests').get( requireAuth, getAllLeaveRequests);
 LeaveRouter.route('/team-summary').get( requireAuth, getTeamLeaveSummary);
 LeaveRouter.route('/employee-leaves/:employeeId').get(requireAuth, getLeaveDetailsByEmployeeId);
 LeaveRouter.route('/leave-details/:leaveId').get(requireAuth, getLeaveDetailsById);
-
+LeaveRouter.route('/cancel-leave/:leaveId').delete(requireAuth, cancelLeaveRequest);
 module.exports = LeaveRouter;
