@@ -5,6 +5,7 @@ const TimeLog = require("../Modal/Timelog");
 const mongoose = require("mongoose");
 const { User } = require("../Modal/User");
 const { createTimeLogEntry, endTimeLogEntry, calculateDurationInOfficeHours, validateTimeLogEntry } = require('../helper/TimeLogHelper');
+const { logger } = require("../config/nodeMailerConfig");
 
 // const getProjectEmployeeReport = async (req, res) => {
 //   try {
@@ -408,171 +409,83 @@ const resumeTimeLog = async (req, res) => {
     return res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
-const getProjectEmployeeReport = async (req, res) => {
+const getProjectEmployeeComparisonReport = async (req, res) => {
   try {
     const { projectId } = req.params;
 
-    // ------------------------------
-    // STEP 1: Get all employees in this project
-    // ------------------------------
+    if (!projectId)
+      return res.status(400).json({ FailureMessage: "Please provide projectId" });
 
-    const projectEmployees = await User.aggregate([
-      {
-        $lookup: {
-          from: "projects",
-          localField: "_id",
-          foreignField: "team.user",
-          as: "projectInfo"
+    // 🔹 Get all employees in the project
+    const project = await Project.findById(projectId).populate("team.user", "name email avatarUrl role");
+    if (!project) return res.status(404).json({ FailureMessage: "Project not found" });
+
+    const employees = project.team.filter(member => member.role === "employee").map(member => member.user);
+
+    const report = [];
+
+    for (const emp of employees) {
+      // 🔹 Fetch all tasks for project
+      const tasks = await Task.find({ project: projectId });
+
+      let totalDuration = 0;
+      const reportMilestones = [];
+
+      let tasksAssigned = 0;
+      let tasksCompleted = 0;
+      let subtasksAssigned = 0;
+      let subtasksCompleted = 0;
+
+      for (const task of tasks) {
+        // Task stats
+        const taskAssignee = task.assignees.find(a => a.user.toString() === emp._id.toString());
+
+        if (taskAssignee) {
+          tasksAssigned += 1;
+          if (["review", "completed"].includes(task.status)) tasksCompleted += 1;
         }
-      },
-      { $unwind: "$projectInfo" },
-      {
-        $match: {
-          "projectInfo._id": new mongoose.Types.ObjectId(projectId)
-        }
-      },
-      {
-        $project: {
-          _id: 1,
-          name: 1,
-          email: 1,
-          avatar: 1,
-          role: 1
-        }
-      }
-    ]);
 
-    const employeeIds = projectEmployees.map(e => e._id);
+        // Subtasks for this task
+        const subtasks = await SubTask.find({ task: task._id });
 
-    // ------------------------------
-    // STEP 2: TASK stats per employee
-    // ------------------------------
+        let milestoneDuration = 0;
 
-    const taskStats = await Task.aggregate([
-      {
-        $match: { project: new mongoose.Types.ObjectId(projectId) }
-      },
-      { $unwind: "$assignees" },
-      {
-        $match: { "assignees.user": { $in: employeeIds } }
-      },
-      {
-        $group: {
-          _id: "$assignees.user",
-          tasksAssigned: { $sum: 1 },
-          tasksCompleted: {
-            $sum: {
-              $cond: [{ $eq: ["$assignees.status", "completed"] }, 1, 0]
-            }
+        for (const subtask of subtasks) {
+          const subAssignee = subtask.assignees.find(a => a.user.toString() === emp._id.toString());
+          if (subAssignee) {
+            subtasksAssigned += 1;
+            if (["review", "completed"].includes(subtask.status)) subtasksCompleted += 1;
           }
+
+          // Time logs for this subtask & user
+          const timeLogs = await TimeLog.find({ subTask: subtask._id, user: emp._id });
+          for (const log of timeLogs) milestoneDuration += log.duration;
         }
+
+        totalDuration += milestoneDuration;
+        reportMilestones.push({
+          id: task._id,
+          title: task.title,
+          duration: formatDuration2(milestoneDuration)
+        });
       }
-    ]);
-
-    // Convert array → object for quick lookup
-    const taskMap = taskStats.reduce((acc, item) => {
-      acc[item._id] = item;
-      return acc;
-    }, {});
-
-    // ------------------------------
-    // STEP 3: SUBTASK stats per employee
-    // ------------------------------
-
-    const subTaskStats = await SubTask.aggregate([
-      {
-        $lookup: {
-          from: "tasks",
-          localField: "task",
-          foreignField: "_id",
-          as: "taskInfo"
-        }
-      },
-      { $unwind: "$taskInfo" },
-      {
-        $match: {
-          "taskInfo.project": new mongoose.Types.ObjectId(projectId)
-        }
-      },
-      { $unwind: "$assignees" },
-      {
-        $match: { "assignees.user": { $in: employeeIds } }
-      },
-      {
-        $group: {
-          _id: "$assignees.user",
-          subtasksAssigned: { $sum: 1 },
-          subtasksCompleted: {
-            $sum: {
-              $cond: [{ $eq: ["$assignees.status", "completed"] }, 1, 0]
-            }
-          }
-        }
-      }
-    ]);
-
-    const subTaskMap = subTaskStats.reduce((acc, item) => {
-      acc[item._id] = item;
-      return acc;
-    }, {});
-
-    // ------------------------------
-    // STEP 4: TIME LOG per employee
-    // ------------------------------
-
-    const timeLogStats = await TimeLog.aggregate([
-      {
-        $match: {
-          project: new mongoose.Types.ObjectId(projectId),
-          user: { $in: employeeIds }
-        }
-      },
-      {
-        $group: {
-          _id: "$user",
-          timeSpentMinutes: { $sum: "$duration" }
-        }
-      }
-    ]);
-
-    const timeMap = timeLogStats.reduce((acc, item) => {
-      acc[item._id] = item.timeSpentMinutes;
-      return acc;
-    }, {});
-
-    // ------------------------------
-    // STEP 5: FINAL REPORT BUILD
-    // ------------------------------
-
-    const report = projectEmployees.map((emp) => {
-      const t = taskMap[emp._id] || {};
-      const s = subTaskMap[emp._id] || {};
-
-      const tasksAssigned = t.tasksAssigned || 0;
-      const tasksCompleted = t.tasksCompleted || 0;
-
-      const subtasksAssigned = s.subtasksAssigned || 0;
-      const subtasksCompleted = s.subtasksCompleted || 0;
 
       const totalAssigned = tasksAssigned + subtasksAssigned;
       const totalCompleted = tasksCompleted + subtasksCompleted;
+      const completionRate = totalAssigned === 0 ? "0%" : ((totalCompleted / totalAssigned) * 100).toFixed(1) + "%";
 
-      const completionRate =
-        totalAssigned === 0
-          ? "0%"
-          : ((totalCompleted / totalAssigned) * 100).toFixed(1) + "%";
-
-      const minutes = timeMap[emp._id] || 0;
-      const hours = Math.floor(minutes / 60);
-      const mins = minutes % 60;
-
-      return {
+      report.push({
         employee: {
           id: emp._id,
           name: emp.name,
           email: emp.email,
-          avatar: emp.avatar,
-          role: emp.role,
+          avatar: emp.avatarUrl,
+          role: emp.role
+        },
+        project: {
+          id: projectId,
+          title: project.name,
+          milestones: reportMilestones
         },
         stats: {
           tasksAssigned,
@@ -582,20 +495,21 @@ const getProjectEmployeeReport = async (req, res) => {
           totalAssigned,
           totalCompleted,
           completionRate,
-          timeSpent: `${hours}h ${mins}m`,
+          totalDuration: formatDuration2(totalDuration)
         }
-      };
-    });
+      });
+    }
 
-    res.json({ success: true, data: report });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(200).json({ success: true, data: report });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+
+
 module.exports = {
-  getProjectEmployeeReport,
+  getProjectEmployeeComparisonReport,
   getEmployeeProjects,
   getEmployeeTasksByProject,
   getEmployeeSubTasksByTask,

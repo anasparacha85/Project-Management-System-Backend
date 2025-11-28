@@ -13,4 +13,5 @@ EmployeeRouter.route('/getEmployeeProjectReport')
 EmployeeRouter.route('/takeBreak').post(requireAuth,EmployeeController.pauseTimeLog)
 EmployeeRouter.route('/resumeBreak').post(requireAuth,EmployeeController.resumeTimeLog)
 EmployeeRouter.route('/getEmployeeProjectReport').post(requireAuth,EmployeeController.getEmployeeReportByProjectId)
+EmployeeRouter.route('/getEmployeesComparisonReport/:projectId').get(requireAuth,EmployeeController.getProjectEmployeeComparisonReport)
 module.exports=EmployeeRouter
