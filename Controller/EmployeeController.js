@@ -6,117 +6,117 @@ const mongoose = require("mongoose");
 const { User } = require("../Modal/User");
 const { createTimeLogEntry, endTimeLogEntry, calculateDurationInOfficeHours, validateTimeLogEntry } = require('../helper/TimeLogHelper');
 
-const getProjectEmployeeReport = async (req, res) => {
-  try {
-    const { projectId } = req.params;
+// const getProjectEmployeeReport = async (req, res) => {
+//   try {
+//     const { projectId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(projectId)) {
-      return res.status(400).json({ message: "Invalid projectId" });
-    }
+//     if (!mongoose.Types.ObjectId.isValid(projectId)) {
+//       return res.status(400).json({ message: "Invalid projectId" });
+//     }
 
-    // 🟢 Project + Team
-    const project = await Project.findById(projectId).populate(
-      "team.user",
-      "name email avatarUrl"
-    );
-    if (!project) {
-      return res.status(404).json({ message: "Project not found" });
-    }
+//     // 🟢 Project + Team
+//     const project = await Project.findById(projectId).populate(
+//       "team.user",
+//       "name email avatarUrl"
+//     );
+//     if (!project) {
+//       return res.status(404).json({ message: "Project not found" });
+//     }
 
-    // 🟡 Tasks for Project
-    const tasks = await Task.find({ project: projectId }).populate(
-      "assignees.user",
-      "name email avatarUrl"
-    );
+//     // 🟡 Tasks for Project
+//     const tasks = await Task.find({ project: projectId }).populate(
+//       "assignees.user",
+//       "name email avatarUrl"
+//     );
 
-    // 🟠 Subtasks -> project ke through tasks fetch karenge
-    const taskIds = tasks.map((t) => t._id);
-    const subtasks = await SubTask.find({ task: { $in: taskIds } }).populate(
-      "assignees.user",
-      "name email avatarUrl"
-    );
+//     // 🟠 Subtasks -> project ke through tasks fetch karenge
+//     const taskIds = tasks.map((t) => t._id);
+//     const subtasks = await SubTask.find({ task: { $in: taskIds } }).populate(
+//       "assignees.user",
+//       "name email avatarUrl"
+//     );
 
-    // 🔵 TimeLogs (duration is stored in milliseconds)
-    const logs = await TimeLog.aggregate([
-      { $match: { project: new mongoose.Types.ObjectId(projectId) } },
-      {
-        $group: {
-          _id: "$user",
-          totalMs: { $sum: "$duration" },
-        },
-      },
-    ]);
+//     // 🔵 TimeLogs (duration is stored in milliseconds)
+//     const logs = await TimeLog.aggregate([
+//       { $match: { project: new mongoose.Types.ObjectId(projectId) } },
+//       {
+//         $group: {
+//           _id: "$user",
+//           totalMs: { $sum: "$duration" },
+//         },
+//       },
+//     ]);
 
-    const logMap = {};
-    logs.forEach((l) => {
-      // convert ms -> minutes for reporting
-      const minutes = l.totalMs ? Math.round(l.totalMs / (1000 * 60)) : 0;
-      logMap[l._id.toString()] = minutes;
-    });
+//     const logMap = {};
+//     logs.forEach((l) => {
+//       // convert ms -> minutes for reporting
+//       const minutes = l.totalMs ? Math.round(l.totalMs / (1000 * 60)) : 0;
+//       logMap[l._id.toString()] = minutes;
+//     });
 
-    // 🟣 Build Report
-    const report = project.team.map((member) => {
-      const userId = member.user._id.toString();
+//     // 🟣 Build Report
+//     const report = project.team.map((member) => {
+//       const userId = member.user._id.toString();
 
-      // User Tasks
-      const userTasks = tasks.filter((t) =>
-        t.assignees.some(
-          (a) => a.user && a.user._id.toString() === userId
-        )
-      );
-      const completedTasks = userTasks.filter((t) => t.status === "completed");
+//       // User Tasks
+//       const userTasks = tasks.filter((t) =>
+//         t.assignees.some(
+//           (a) => a.user && a.user._id.toString() === userId
+//         )
+//       );
+//       const completedTasks = userTasks.filter((t) => t.status === "completed");
 
-      // User Subtasks
-      const userSubTasks = subtasks.filter((st) =>
-        st.assignees.some(
-          (a) => a.user && a.user._id.toString() === userId
-        )
-      );
-      const completedSubTasks = userSubTasks.filter(
-        (st) => st.status === "completed"
-      );
+//       // User Subtasks
+//       const userSubTasks = subtasks.filter((st) =>
+//         st.assignees.some(
+//           (a) => a.user && a.user._id.toString() === userId
+//         )
+//       );
+//       const completedSubTasks = userSubTasks.filter(
+//         (st) => st.status === "completed"
+//       );
 
-      // Time Spent
-      const minutesSpent = logMap[userId] || 0;
-      const hours = Math.floor(minutesSpent / 60);
-      const mins = minutesSpent % 60;
+//       // Time Spent
+//       const minutesSpent = logMap[userId] || 0;
+//       const hours = Math.floor(minutesSpent / 60);
+//       const mins = minutesSpent % 60;
 
-      // Completion %
-      const totalAssigned = userTasks.length + userSubTasks.length;
-      const totalCompleted =
-        completedTasks.length + completedSubTasks.length;
-      const completionRate =
-        totalAssigned > 0
-          ? ((totalCompleted / totalAssigned) * 100).toFixed(1)
-          : 0;
+//       // Completion %
+//       const totalAssigned = userTasks.length + userSubTasks.length;
+//       const totalCompleted =
+//         completedTasks.length + completedSubTasks.length;
+//       const completionRate =
+//         totalAssigned > 0
+//           ? ((totalCompleted / totalAssigned) * 100).toFixed(1)
+//           : 0;
 
-      return {
-        employee: {
-          id: member.user._id,
-          name: member.user.name,
-          email: member.user.email,
-          avatar: member.user.avatarUrl,
-          role: member.role,
-        },
-        stats: {
-          tasksAssigned: userTasks.length,
-          tasksCompleted: completedTasks.length,
-          subtasksAssigned: userSubTasks.length,
-          subtasksCompleted: completedSubTasks.length,
-          totalAssigned,
-          totalCompleted,
-          completionRate: `${completionRate}%`,
-          timeSpent: `${hours}h ${mins}m`,
-        },
-      };
-    });
+//       return {
+//         employee: {
+//           id: member.user._id,
+//           name: member.user.name,
+//           email: member.user.email,
+//           avatar: member.user.avatarUrl,
+//           role: member.role,
+//         },
+//         stats: {
+//           tasksAssigned: userTasks.length,
+//           tasksCompleted: completedTasks.length,
+//           subtasksAssigned: userSubTasks.length,
+//           subtasksCompleted: completedSubTasks.length,
+//           totalAssigned,
+//           totalCompleted,
+//           completionRate: `${completionRate}%`,
+//           timeSpent: `${hours}h ${mins}m`,
+//         },
+//       };
+//     });
 
-    res.status(200).json({ report });
-  } catch (error) {
-    console.error("Error generating report:", error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-};
+//     res.status(200).json({ report });
+//   } catch (error) {
+//     console.error("Error generating report:", error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// };
 
 
 const getEmployeeProjects = async (req, res) => {
@@ -408,7 +408,192 @@ const resumeTimeLog = async (req, res) => {
     return res.status(500).json({ FailureMessage: "Internal server error" });
   }
 };
+const getProjectEmployeeReport = async (req, res) => {
+  try {
+    const { projectId } = req.params;
 
+    // ------------------------------
+    // STEP 1: Get all employees in this project
+    // ------------------------------
+
+    const projectEmployees = await User.aggregate([
+      {
+        $lookup: {
+          from: "projects",
+          localField: "_id",
+          foreignField: "team.user",
+          as: "projectInfo"
+        }
+      },
+      { $unwind: "$projectInfo" },
+      {
+        $match: {
+          "projectInfo._id": new mongoose.Types.ObjectId(projectId)
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          email: 1,
+          avatar: 1,
+          role: 1
+        }
+      }
+    ]);
+
+    const employeeIds = projectEmployees.map(e => e._id);
+
+    // ------------------------------
+    // STEP 2: TASK stats per employee
+    // ------------------------------
+
+    const taskStats = await Task.aggregate([
+      {
+        $match: { project: new mongoose.Types.ObjectId(projectId) }
+      },
+      { $unwind: "$assignees" },
+      {
+        $match: { "assignees.user": { $in: employeeIds } }
+      },
+      {
+        $group: {
+          _id: "$assignees.user",
+          tasksAssigned: { $sum: 1 },
+          tasksCompleted: {
+            $sum: {
+              $cond: [{ $eq: ["$assignees.status", "completed"] }, 1, 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    // Convert array → object for quick lookup
+    const taskMap = taskStats.reduce((acc, item) => {
+      acc[item._id] = item;
+      return acc;
+    }, {});
+
+    // ------------------------------
+    // STEP 3: SUBTASK stats per employee
+    // ------------------------------
+
+    const subTaskStats = await SubTask.aggregate([
+      {
+        $lookup: {
+          from: "tasks",
+          localField: "task",
+          foreignField: "_id",
+          as: "taskInfo"
+        }
+      },
+      { $unwind: "$taskInfo" },
+      {
+        $match: {
+          "taskInfo.project": new mongoose.Types.ObjectId(projectId)
+        }
+      },
+      { $unwind: "$assignees" },
+      {
+        $match: { "assignees.user": { $in: employeeIds } }
+      },
+      {
+        $group: {
+          _id: "$assignees.user",
+          subtasksAssigned: { $sum: 1 },
+          subtasksCompleted: {
+            $sum: {
+              $cond: [{ $eq: ["$assignees.status", "completed"] }, 1, 0]
+            }
+          }
+        }
+      }
+    ]);
+
+    const subTaskMap = subTaskStats.reduce((acc, item) => {
+      acc[item._id] = item;
+      return acc;
+    }, {});
+
+    // ------------------------------
+    // STEP 4: TIME LOG per employee
+    // ------------------------------
+
+    const timeLogStats = await TimeLog.aggregate([
+      {
+        $match: {
+          project: new mongoose.Types.ObjectId(projectId),
+          user: { $in: employeeIds }
+        }
+      },
+      {
+        $group: {
+          _id: "$user",
+          timeSpentMinutes: { $sum: "$duration" }
+        }
+      }
+    ]);
+
+    const timeMap = timeLogStats.reduce((acc, item) => {
+      acc[item._id] = item.timeSpentMinutes;
+      return acc;
+    }, {});
+
+    // ------------------------------
+    // STEP 5: FINAL REPORT BUILD
+    // ------------------------------
+
+    const report = projectEmployees.map((emp) => {
+      const t = taskMap[emp._id] || {};
+      const s = subTaskMap[emp._id] || {};
+
+      const tasksAssigned = t.tasksAssigned || 0;
+      const tasksCompleted = t.tasksCompleted || 0;
+
+      const subtasksAssigned = s.subtasksAssigned || 0;
+      const subtasksCompleted = s.subtasksCompleted || 0;
+
+      const totalAssigned = tasksAssigned + subtasksAssigned;
+      const totalCompleted = tasksCompleted + subtasksCompleted;
+
+      const completionRate =
+        totalAssigned === 0
+          ? "0%"
+          : ((totalCompleted / totalAssigned) * 100).toFixed(1) + "%";
+
+      const minutes = timeMap[emp._id] || 0;
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+
+      return {
+        employee: {
+          id: emp._id,
+          name: emp.name,
+          email: emp.email,
+          avatar: emp.avatar,
+          role: emp.role,
+        },
+        stats: {
+          tasksAssigned,
+          tasksCompleted,
+          subtasksAssigned,
+          subtasksCompleted,
+          totalAssigned,
+          totalCompleted,
+          completionRate,
+          timeSpent: `${hours}h ${mins}m`,
+        }
+      };
+    });
+
+    res.json({ success: true, data: report });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 module.exports = {
   getProjectEmployeeReport,
   getEmployeeProjects,
@@ -417,5 +602,6 @@ module.exports = {
   getEmployeeMilestoneReportByEmployeeId,
   getEmployeeReportByProjectId,
   pauseTimeLog,
-  resumeTimeLog
+  resumeTimeLog,
+  getEmployeeReportByProjectId
 };
