@@ -54,11 +54,11 @@ const notifyUser = async ({ type, message, recipientId, project, task, subTask, 
         </div>
       `;
 
-      // await sendEmail({
-      //   to: recipientUser.email,
-      //   subject: title || "New Notification - Project Management System",
-      //   html: htmlEmail,
-      // });
+      await sendEmail({
+        to: recipientUser.email,
+        subject: title || "New Notification - Project Management System",
+        html: htmlEmail,
+      });
     }
 
     return notification;
