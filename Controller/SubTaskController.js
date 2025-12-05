@@ -716,9 +716,7 @@ const updateEmployeeSubTaskStatusById = async (req, res) => {
     
       
     // Check if employee is on leave
-    const onLeave = await isEmployeeOnLeave(userId, new Date());
-    console.log(onLeave,"==========");
-    
+    const onLeave = await isEmployeeOnLeave(userId, new Date());    
     if (onLeave) {
       return res.status(400).json({
         FailureMessage: "You are on approved leave and cannot log time"

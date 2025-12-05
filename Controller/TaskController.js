@@ -110,13 +110,15 @@ const fetchMembersByProjectid = async (req, res) => {
         path: "team.user", // populate user inside team
         // select: "name email profilePic" // sirf ye fields lao user model se
       });
+      console.log(project,"===========");
+      
 
     if (!project) {
       return res.status(404).json({ message: "Project not found" });
     }
 
     // sirf team ka data bhejna hai
-    res.json(project.team);
+    res.json({team:project.team  ,teamName:project.teamName  });
 
   } catch (error) {
     console.error(error);
