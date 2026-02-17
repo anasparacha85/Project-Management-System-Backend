@@ -49,22 +49,7 @@ console.log(user);
   
 
 
-  // Cookie set karna
-  //localhost
-//  res.cookie('token', token, {
-//     httpOnly: true,   // JS se access nahi hoga
-//    secure: false,       // dev ke liye false, prod me true
-//   sameSite: "lax",
-//     maxAge: 24 * 60 * 60 * 1000, // 1 din
-//   });
 
-//producttion
-//   res.cookie("token", token, {
-//   httpOnly: true,
-//   secure: process.env.NODE_ENV === "production", // prod me true
-//   sameSite: "None", // cross-site requests ke liye zaroori
-//   maxAge: 24 * 60 * 60 * 1000,
-// });
 
   return res.json({SuccessMessage: 'Login successful' ,token});
 };

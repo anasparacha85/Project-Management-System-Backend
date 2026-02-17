@@ -2,7 +2,6 @@
 const jwt=require('jsonwebtoken')
 
 const ACCESS_TTL = '1d'; // short-lived
-const REFRESH_TTL_DAYS = 30;
 require('dotenv').config()
 const signAccessToken=(user)=> {
   return jwt.sign(
