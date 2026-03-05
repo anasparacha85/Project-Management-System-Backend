@@ -26,7 +26,7 @@ const createTask = async (req, res) => {
     const PS = new Date(project.startDate);
     const PD = new Date(project.endDate);
 
-    if (StartDate < PS || DueDate < PS || StartDate > PD || DueDate > PD) {
+    if (StartDate < PS || DueDate < PS || StartDate > PD ) {
       return res.status(400).json({ FailureMessage: "Invalid date range" });
     }
 

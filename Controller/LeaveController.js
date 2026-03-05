@@ -384,21 +384,63 @@ function calculateWorkingDays(startDate, endDate) {
 
   return count;
 }
-const getLeaveDetailsByEmployeeId=async(req,res)=>{
+const getLeaveDetailsByEmployeeId = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    const leaves = await Leave.find({ employee: employeeId ,manager:req.user._id})
-      .populate('approvedBy', 'name email')
-      .populate('employee', 'name email')
-       .populate('manager', 'name email')
-      .sort({ createdAt: -1 })
-      console.log(leaves,"i am leave");
-      return res.status(200).json({leaveHistory:leaves})
+    const { leaveType, status, dateFrom, dateTo, search } = req.query;
+
+    let filter = {
+      employee: employeeId,
+      manager: req.user._id,
+    };
+
+    // Filter by leaveType
+    if (leaveType) {
+      filter.leaveType = leaveType.toLowerCase();
+    }
+
+    // Filter by status
+    if (status) {
+      filter.status = status.toLowerCase();
+    }
+
+    // Date range filter
+    if (dateFrom || dateTo) {
+      filter.startDate = {};
+
+      if (dateFrom) {
+        filter.startDate.$gte = new Date(dateFrom);
+      }
+
+      if (dateTo) {
+        filter.startDate.$lte = new Date(dateTo);
+      }
+    }
+
+    // Search filter (by reason)
+    if (search) {
+      filter.$or = [
+        { leaveType: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
+        { reason: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    console.log("APPLIED FILTERS:", filter);
+
+    const leaves = await Leave.find(filter)
+      .populate("approvedBy", "name email")
+      .populate("employee", "name email department position")
+      .populate("manager", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({ leaveHistory: leaves });
   } catch (error) {
-    console.error('getLeaveDetailsByEmployeeId error:', error);
-    return res.status(500).json({ FailureMessage: 'Server Error' });
+    console.error("getLeaveDetailsByEmployeeId error:", error);
+    return res.status(500).json({ FailureMessage: "Server Error" });
   }
-}
+};
+
 
 
 const getLeaveDetailsById=async(req,res)=>{
