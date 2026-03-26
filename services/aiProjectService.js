@@ -1,5 +1,4 @@
 // services/aiProjectService.js
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const schema = {
   type: "object",
   properties: {
@@ -50,7 +49,47 @@ const schema = {
   required: ["success", "data", "errors"]
 };
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+async function callHfAi(prompt, maxTokens = 10000, temperature = 0.7) {
+  const apiUrl = process.env.HF_AI_URL || "https://muhammed-hasaan-careerflix.hf.space/get-ai-response";
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      prompt,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+  console.log(`HF AI API response status ${response} ${response.status}`);
+  if (!response.ok) {
+    
+    
+    const body = await response.text();
+    throw new Error(`HF AI API error: ${response.status} ${response.statusText} - ${body}`);
+  }
+
+  const json = await response.json();
+  console.log("HF AI API raw response:", json);
+
+  if (!json) {
+    throw new Error("HF AI API returned empty response");
+  }
+
+  const output =
+    typeof json === "string"
+      ? json
+      : json.generated_text || json.text || json.output || json.data || json.response || JSON.stringify(json);
+
+  if (!output) {
+    throw new Error("Unable to parse HF AI response text");
+  }
+
+  return output;
+}
 
 /**
  * Sanitize and parse JSON response from AI
@@ -155,9 +194,9 @@ function sanitizeAndParseJSON(jsonText) {
   // If all else fails, throw with helpful debugging info
   throw new Error(
     `JSON parsing failed after all sanitization attempts.\n` +
-    `Error: Unable to parse Gemini response.\n` +
+    `Error: Unable to parse AI response.\n` +
     `Response preview: ${jsonText.substring(0, 300)}\n` +
-    `Please check if Gemini is returning properly formatted JSON.`
+    `Please check if the AI service is returning properly formatted JSON.`
   );
 }
 
@@ -167,8 +206,6 @@ function sanitizeAndParseJSON(jsonText) {
  * Output: { name, description, tasks: [{...}, ...], timeline, budget }
  */
 async function generateProjectBreakdown(userDescription, projectStartDate, projectEndDate) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
-
   const prompt = `You are an expert project manager. Generate a detailed project plan.
 
 
@@ -229,27 +266,8 @@ REQUIREMENTS:
 - IMPORTANT: Ensure all JSON is valid and properly formatted`;
 
   try {
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.5,  // Lower temperature for more consistent JSON
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 4096,
-      },
-    });
-
-    const responseText = response.response.text();
-    
-    // Log the raw response for debugging (first 500 chars)
-    console.log("Gemini response preview:", responseText.substring(0, 500));
-    
-    // Use sanitization function to parse JSON safely
+    const responseText = await callHfAi(prompt, 10000, 0.7);
+    console.log("HF AI response preview:", responseText.substring(0, 500));
     const result = sanitizeAndParseJSON(responseText);
     return result;
   } catch (error) {
@@ -266,8 +284,6 @@ REQUIREMENTS:
  * Generate tasks for an existing project
  */
 async function generateTasksForProject(projectId, projectName, projectDescription, userDescription, numberOfTasks = 5, projectStartDate, projectEndDate) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
-
   const prompt = `You are a project management expert. Generate ${numberOfTasks} tasks for a project.
 
 PROJECT: ${projectName}
@@ -325,27 +341,8 @@ REQUIREMENTS:
 - IMPORTANT: Ensure all JSON is valid and properly formatted`;
 
   try {
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.5,  // Lower temperature for more consistent JSON
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 4096,
-      },
-    });
-
-    const responseText = response.response.text();
-    
-    // Log the raw response for debugging (first 500 chars)
-    console.log("Gemini response preview:", responseText.substring(0, 500));
-    
-    // Use sanitization function to parse JSON safely
+    const responseText = await callHfAi(prompt, 10000, 0.7);
+    console.log("HF AI task generation preview:", responseText.substring(0, 500));
     const result = sanitizeAndParseJSON(responseText);
     return result;
   } catch (error) {

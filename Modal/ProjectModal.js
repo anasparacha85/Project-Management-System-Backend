@@ -12,7 +12,7 @@ const projectSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
-    index: true   // 👈 Direct field index
+   
   },
 
   team: [
@@ -20,7 +20,7 @@ const projectSchema = new mongoose.Schema({
       user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        index: true // 👈 team.user per index
+     
       },
       role: {
         type: String,
@@ -37,7 +37,7 @@ const projectSchema = new mongoose.Schema({
       uploadedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        index: true // 👈 uploadedBy per index
+       
       }
     }
   ],
@@ -46,7 +46,7 @@ const projectSchema = new mongoose.Schema({
     type:String,
     enum:['draft','active','on Hold','Completed','archieve'],
     default:'draft',
-    index: true // 👈 status filter hota hai dashboard me
+  
   },
 
   Tasks:[{ type: mongoose.Schema.Types.ObjectId , ref:'Task' }],
@@ -62,6 +62,7 @@ const projectSchema = new mongoose.Schema({
 
 // 1) User ke sab projects fast find
 projectSchema.index({ createdBy: 1, projectStatus: 1 });
+projectSchema.index({"files.uploadedBy":1}) // for files uploaded by specific user
 
 // 2) Team members ke projects fast find
 projectSchema.index({ "team.user": 1 });

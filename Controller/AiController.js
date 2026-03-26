@@ -1,4 +1,3 @@
-const genAI = require("../config/generativeaiconfig");
 const {
   generateProjectBreakdown,
   generateTasksForProject,
@@ -30,12 +29,23 @@ if (type === "project") {
   prompt = `Write a short, clear, and natural description for "${name}".`;
 }
 
-    const response = await genAI.getGenerativeModel({ model: "gemini-2.5-flash" }).generateContent(prompt);
-    console.log(response);
-    
-    // ✅ Extract text safely
-    const descriptionText = response?.response?.text() || "No description generated.";
+    const aiUrl = process.env.HF_AI_URL || "https://muhammed-hasaan-careerflix.hf.space/get-ai-response";
+    const apiResponse = await fetch(aiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ prompt, max_tokens: 10000, temperature: 0.7 }),
+    });
 
+    if (!apiResponse.ok) {
+      const errText = await apiResponse.text();
+      throw new Error(`AI description API failed: ${apiResponse.status} ${apiResponse.statusText} - ${errText}`);
+    }
+
+    const aiBody = await apiResponse.json();
+    const descriptionText = aiBody.generated_text || aiBody.text || aiBody.output || JSON.stringify(aiBody);
     res.json({ description: descriptionText });
 
   } catch (err) {
@@ -74,7 +84,8 @@ const generateProjectBreakdownController = async (req, res) => {
       startDate,
       endDate
     );
-
+    console.log(aiResult);
+    
     if (!aiResult.success) {
       return res.status(500).json({
         FailureMessage: "AI generation failed",
@@ -173,6 +184,7 @@ const generateProjectBreakdownController = async (req, res) => {
         taskCount: createdTasks.length,
         note: "Review and assign team members before activation",
       },
+      data: aiResult.data,
     });
   } catch (error) {
     console.error("generateProjectBreakdown error:", error);
